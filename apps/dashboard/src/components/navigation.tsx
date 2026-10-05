@@ -1,8 +1,8 @@
-import { Bot, CircleDot, GitBranch, LayoutDashboard } from "lucide-react";
+import { CircleDot, GitBranch, LayoutDashboard } from "lucide-react";
 import type { AgentOverview, SessionOverview, SessionSummary } from "@aoverview/core/contracts";
 import { Button } from "@/components/ui/button";
 import {
-  SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
+  SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, useSidebar,
 } from "@/components/ui/sidebar";
 import { AgentAvatar, statusLabels } from "./overview-ui";
@@ -28,7 +28,6 @@ export function Navigation({ sessions, sessionId, overview, agentId, navigate, h
   return <>
     <SidebarContent>
       <SidebarGroup>
-        <SidebarGroupLabel>Workspace</SidebarGroupLabel>
         <SidebarGroupContent><SidebarMenu><SidebarMenuItem>
           <SidebarMenuButton tooltip="Vista d’insieme" isActive={!sessionId} onClick={() => choose(null)}
             aria-current={!sessionId ? "page" : undefined}>
@@ -59,12 +58,6 @@ export function Navigation({ sessions, sessionId, overview, agentId, navigate, h
           choose={id => choose(overview.session.id, id)}/></SidebarGroupContent>
       </SidebarGroup>}
     </SidebarContent>
-    {!sessionId && <SidebarFooter className="p-4 group-data-[collapsible=icon]:hidden">
-      <div className="rounded-xl border bg-gradient-to-br from-muted/40 to-transparent p-4">
-        <p className="flex items-center gap-2 text-xs font-medium"><Bot className="size-3.5" aria-hidden="true"/>Il lavoro prende forma.</p>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">Gli agent comunicano attività e risultati. La vista si aggiorna in tempo reale.</p>
-      </div>
-    </SidebarFooter>}
   </>;
 }
 

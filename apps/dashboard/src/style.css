@@ -119,6 +119,14 @@ pre {
   width: 6px;
   height: 6px;
   pointer-events: none;
+  visibility: hidden;
+}
+.activity-canvas .react-flow__handle.connected-port {
+  visibility: visible;
+  border-color: #a78bfa;
+}
+.activity-canvas .react-flow__edge.animated path {
+  animation-duration: 1.25s;
 }
 .activity-canvas .react-flow__node button:focus-visible [data-slot='card'] {
   outline: 2px solid var(--ring);
@@ -178,16 +186,6 @@ pre {
     0 6px 22px oklch(0 0 0 / 16%),
     inset 0 1px 0 oklch(1 0 0 / 5%);
 }
-.metric-card {
-  background-image: linear-gradient(135deg, oklch(1 0 0 / 8%), oklch(1 0 0 / 1%) 70%);
-}
-.catalog-card:hover {
-  transform: translateY(-2px);
-}
-.metric-card:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 3px;
-}
 [data-slot='button'],
 [data-slot='input'],
 select,
@@ -207,15 +205,14 @@ select,
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .activity-canvas .react-flow__edge.animated path {
+    animation: none;
+  }
   *,
   *::before,
   *::after {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
-  }
-  .metric-card:hover,
-  .catalog-card:hover {
-    transform: none;
   }
 }
 

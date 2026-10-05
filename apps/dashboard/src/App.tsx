@@ -1,12 +1,11 @@
 import { lazy, Suspense, useEffect, useState, type CSSProperties } from "react";
-import { Activity, ArrowRight, ArrowUpRight, Clock3, GitBranch, Layers3, LayoutDashboard, Target } from "lucide-react";
+import { Activity, AlertCircle, ArrowRight, ArrowUpRight, GitBranch, Layers3, LayoutDashboard, Target } from "lucide-react";
 import type { SessionOverview, SessionSummary } from "@aoverview/core/contracts";
 import { useLiveUpdates, usePages, useResource } from "./data.js";
 import { Navigation } from "./components/navigation";
-import { AgentAvatar, ErrorNotice, LoadingCards, StatusBadge, UpdatedTime } from "./components/overview-ui";
-import { Badge } from "@/components/ui/badge";
+import { AgentAvatar, ErrorNotice, LoadingCards, StatusBadge, StatusIndicator, UpdatedTime } from "./components/overview-ui";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Sidebar, SidebarHeader, SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
@@ -68,7 +67,7 @@ export function App() {
         <div className="flex min-w-0 items-center gap-3">
           <SidebarTrigger aria-label="Apri navigazione" className="size-10 shrink-0 md:hidden"/>
           <LayoutDashboard className="hidden size-4 text-muted-foreground sm:block" aria-hidden="true"/>
-          <h2 className="truncate text-sm font-medium">Vista d’insieme</h2>
+          <h1 className="truncate text-sm font-medium">Vista d’insieme</h1>
         </div>
         <div role="status" className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
           <span className={cn("size-1.5 rounded-full", live.connected ? "bg-emerald-400 shadow-[0_0_8px_#34d39940]" : "bg-amber-400")} aria-hidden="true"/>
@@ -79,18 +78,12 @@ export function App() {
         ? "relative min-h-0 flex-1" : "mx-auto w-full max-w-[1440px] flex-1 space-y-6 p-4 sm:p-6")}>
         {error && <div className={cn(selection.sessionId && "absolute top-28 left-4 z-40 max-w-md right-4 sm:left-6")}><ErrorNotice message={error} retry={retryData}/></div>}
         {!selection.sessionId ? <>
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div><p className="mb-2 text-xs font-medium text-muted-foreground">WORKSPACE</p>
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Il lavoro degli agent.</h1>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">Obiettivi, progressi e prossimi passi. Tutto a colpo d’occhio.</p></div>
-            <Badge variant="outline" className="gap-1.5 py-1.5 text-xs text-muted-foreground"><Clock3 className="size-3" aria-hidden="true"/>Aggiornamento automatico</Badge>
-          </div>
-          {list.length > 0 && <SessionMetrics sessions={list}/>}
+          {sessions.data && <SessionMetrics sessions={list} partial={Boolean(sessions.data.nextCursor)}/>}
           <div className="flex items-center justify-between gap-3 pt-1"><h2 className="text-sm font-semibold">Sessioni</h2>
-            <span className="text-xs text-muted-foreground">Le più recenti per prime</span></div>
+            <span className="text-xs text-muted-foreground">{list.length}</span></div>
           {sessions.loading && !sessions.data && <LoadingCards count={3} label="Caricamento delle sessioni…"/>}
           {!sessions.loading && !sessions.error && list.length === 0 && <EmptyWorkspace/>}
-          <div className="grid items-stretch gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+          <div className="grid items-stretch gap-3 xl:grid-cols-2 2xl:grid-cols-3">
             {list.map(session => <SessionCard key={session.id} session={session} now={now} open={() => navigate(session.id)}/>)}
           </div>
           {sessions.data?.nextCursor && <div className="flex justify-center"><Button variant="outline" disabled={sessions.loading}
@@ -121,9 +114,6 @@ export function App() {
           </>}
         </>}
       </div>
-      {!selection.sessionId && <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t px-4 py-4 text-xs text-muted-foreground sm:px-6">
-        <span>AOVerview</span><span>Un aggiornamento alla volta.</span>
-      </footer>}
     </SidebarInset>
   </SidebarProvider>;
 }
@@ -137,19 +127,22 @@ function SidebarBrand({ home }: { home: () => void }) {
   </Button>;
 }
 
-function SessionMetrics({ sessions }: { sessions: SessionSummary[] }) {
-  const running = sessions.reduce((sum, session) => sum + session.runningCount, 0);
-  const completed = sessions.reduce((sum, session) => sum + session.completedGoals, 0);
-  const total = sessions.reduce((sum, session) => sum + session.totalGoals, 0);
+function SessionMetrics({ sessions, partial }: { sessions: SessionSummary[]; partial: boolean }) {
+  const running = sessions.reduce((sum, session) => sum + session.workingCount, 0);
+  const openGoals = sessions.reduce((sum, session) => sum + session.openGoals, 0);
+  const blocked = sessions.reduce((sum, session) => sum + session.blockedCount, 0);
   const metrics = [
-    { title: "Sessioni visualizzate", value: String(sessions.length), description: "Percorsi indipendenti", icon: Layers3 },
-    { title: "Agent al lavoro", value: String(running), description: "Principali e subagent", icon: Activity },
-    { title: "Obiettivi completati", value: `${completed} / ${total}`, description: "Nelle sessioni visualizzate", icon: Target },
+    { title: "Agent al lavoro", value: running, icon: Activity },
+    { title: "Obiettivi aperti", value: openGoals, icon: Target },
+    { title: "Attività bloccate", value: blocked, icon: AlertCircle },
   ];
-  return <div className="grid gap-4 sm:grid-cols-3">{metrics.map(metric => <Card key={metric.title} className="metric-card gap-4">
-    <CardHeader><CardDescription className="flex items-center justify-between gap-3 text-xs">{metric.title}<metric.icon className="size-4" aria-hidden="true"/></CardDescription></CardHeader>
-    <CardContent><p className="text-3xl font-semibold tracking-tight">{metric.value}</p><p className="mt-2 text-xs text-muted-foreground">{metric.description}</p></CardContent>
-  </Card>)}</div>;
+  return <section aria-label="Riepilogo delle sessioni" className="space-y-2">
+    <div className="grid gap-3 sm:grid-cols-3">{metrics.map(metric => <Card key={metric.title} className="gap-3 px-5 py-4">
+      <h2 className="flex items-center justify-between gap-3 text-xs text-muted-foreground">{metric.title}<metric.icon className="size-4" aria-hidden="true"/></h2>
+      <p className="text-3xl font-semibold tracking-tight">{metric.value}</p>
+    </Card>)}</div>
+    {partial && <p className="text-xs text-muted-foreground">Conteggi delle {sessions.length} sessioni caricate.</p>}
+  </section>;
 }
 
 function EmptyWorkspace() {
@@ -163,27 +156,25 @@ function EmptyWorkspace() {
 }
 
 function SessionCard({ session, now, open }: { session: SessionSummary; now: number; open: () => void }) {
-  return <Card className="catalog-card relative gap-5">
-    <CardHeader className="gap-4">
-      <div className="flex items-center justify-between gap-3"><span className="text-xs text-muted-foreground">Sessione</span>
-        <StatusBadge status={session.currentBlock?.status === "blocked" && session.status === "running" ? "blocked" : session.status}/></div>
-      <CardTitle><h3 className="wrap-anywhere text-lg leading-7"><button onClick={open}
-        className="text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-ring">{session.title}</button></h3></CardTitle>
-      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"><AgentAvatar name={session.rootAgentName} small/><span className="truncate">{session.rootAgentName}</span></div>
-    </CardHeader>
-    <CardContent className="flex flex-1 flex-col gap-5">
-      <div className="rounded-lg border bg-muted/30 p-3.5">
-        <p className="text-[11px] text-muted-foreground">{session.status === "completed" ? "PERCORSO CONCLUSO" : "ATTIVITÀ CORRENTE"}</p>
-        <p className="mt-2 wrap-anywhere text-sm leading-6">{session.currentBlock?.title ?? (session.status === "reserved" ? "In attesa di avvio"
-          : session.status === "running" ? "In attesa del primo blocco" : "Consulta attività e risultati")}</p>
-      </div>
-      <div className="mt-auto space-y-3"><p className="text-xs text-muted-foreground">{session.completedGoals} di {session.totalGoals} obiettivi completati</p>
-        <Progress value={session.totalGoals ? session.completedGoals / session.totalGoals * 100 : 0} aria-label="Obiettivi della sessione completati" className="h-1"/></div>
-    </CardContent>
-    <CardFooter className="flex-wrap justify-between gap-3 border-t pt-4 text-xs text-muted-foreground">
-      <span className="flex items-center gap-1.5"><GitBranch className="size-3.5" aria-hidden="true"/>{session.agentCount === 1 ? "1 agent" : `1 agent · ${session.agentCount - 1} subagent`}</span>
-      <UpdatedTime value={session.updatedAt} now={now}/>
-      <Button variant="ghost" size="sm" className="relative z-10 ml-auto text-xs" onClick={open} aria-label={`Apri sessione: ${session.title}`}>Apri<ArrowUpRight className="size-3.5" aria-hidden="true"/></Button>
-    </CardFooter>
-  </Card>;
+  const blocked = session.status === "running" && session.currentBlock?.status === "blocked";
+  const status = blocked ? "blocked" : session.status;
+  return <button onClick={open} aria-label={`Apri sessione: ${session.title}`}
+    className="group flex h-full flex-col gap-3 rounded-xl border bg-card p-5 text-left transition-colors hover:border-ring/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <div className="flex items-start gap-2.5"><StatusIndicator status={status} className="mt-1"/>
+      <h3 className="min-w-0 flex-1 wrap-anywhere text-sm leading-6 font-semibold">{session.title}</h3>
+      <ArrowUpRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden="true"/></div>
+    <p className={cn("line-clamp-2 text-sm leading-6", blocked ? "text-amber-300" : "text-muted-foreground")}>
+      {blocked ? session.currentBlock?.concern ?? session.currentBlock?.title : session.currentBlock?.title
+        ?? (session.status === "completed" ? "Lavoro completato" : session.status === "failed" ? "Esecuzione non riuscita"
+          : session.status === "cancelled" ? "Sessione annullata" : "In attesa del prossimo aggiornamento")}
+    </p>
+    <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-2 pt-1 text-xs text-muted-foreground">
+      <span className="min-w-0 truncate">{session.rootAgentName}</span>
+      {session.agentCount > 1 && <span className="flex items-center gap-1"><GitBranch className="size-3" aria-hidden="true"/>{session.agentCount - 1} subagent</span>}
+      <span className="ml-auto shrink-0" title="Obiettivi completati">{session.completedGoals}/{session.totalGoals} obiettivi</span>
+    </div>
+    <div className="flex items-center gap-3"><Progress value={session.totalGoals ? session.completedGoals / session.totalGoals * 100 : 0}
+      aria-label="Obiettivi completati" className="h-1 flex-1"/>
+      <UpdatedTime value={session.updatedAt} now={now}/></div>
+  </button>;
 }

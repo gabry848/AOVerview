@@ -8,7 +8,7 @@ import type { AgentOverview, Block, SessionOverview } from "@aoverview/core/cont
 import { usePages } from "../data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { AgentAvatar, ErrorNotice, LoadingCards, StatusBadge, UpdatedTime } from "./overview-ui";
+import { ErrorNotice, LoadingCards, StatusIndicator, UpdatedTime } from "./overview-ui";
 import { BlockDetails } from "./activity-details";
 import { Goals } from "./goals";
 import { BLOCK_HEIGHT, BLOCK_WIDTH, DELEGATE_HEIGHT, buildActivityGraph } from "./activity-graph";
@@ -19,12 +19,12 @@ interface ActivityProps {
   agent: AgentOverview; overview: SessionOverview; version: string; now: number;
   retry: () => void; chooseAgent: (id: string) => void;
 }
-type BlockNode = Node<{ block: Block }, "block">;
-type DelegateNode = Node<{ agent: AgentOverview }, "delegate">;
+type BlockNode = Node<{ block: Block; hasDelegates: boolean; hasIntegration: boolean }, "block">;
+type DelegateNode = Node<{ agent: AgentOverview; hasIntegration: boolean }, "delegate">;
 type ActivityNode = BlockNode | DelegateNode;
 const nodeTypes = { block: ActivityBlockNode, delegate: ActivityDelegateNode };
 const CanvasContext = createContext<{
-  overview: SessionOverview; now: number; currentId: string | undefined; selectedId: string | null;
+  now: number; currentId: string | undefined; selectedId: string | null;
   selectBlock: (id: string) => void; chooseAgent: (id: string) => void;
 } | null>(null);
 function useCanvas() {
@@ -42,20 +42,27 @@ export function ActivityCanvas({ agent, overview, version, now, retry, chooseAge
   const graph = useMemo(() => buildActivityGraph({ agentId: agent.id, history: history.data?.items ?? [],
     proposed: future.data?.items ?? [], current: agent.currentBlock, agents: overview.agents }),
   [agent.id, agent.currentBlock, overview.agents, history.data, future.data]);
-  const nodes = useMemo<ActivityNode[]>(() => graph.nodes.map(item => ({
-    id: item.id, position: item.position, type: item.kind,
-    data: item.kind === "block" ? { block: item.block } : { agent: item.agent },
-    ariaLabel: item.kind === "block" ? item.block.title : `Subagent ${item.agent.name}`,
-    width: BLOCK_WIDTH, height: item.kind === "block" ? BLOCK_HEIGHT : DELEGATE_HEIGHT,
-    style: { pointerEvents: "all" },
-  } as ActivityNode)), [graph.nodes]);
+  const nodes = useMemo<ActivityNode[]>(() => {
+    const delegates = new Set(graph.links.filter(link => link.kind === "delegation").map(link => link.source));
+    const integrationTargets = new Set(graph.links.filter(link => link.kind === "integration").map(link => link.target));
+    const integrationSources = new Set(graph.links.filter(link => link.kind === "integration").map(link => link.source));
+    return graph.nodes.map(item => ({
+      id: item.id, position: item.position, type: item.kind,
+      data: item.kind === "block" ? { block: item.block, hasDelegates: delegates.has(item.id), hasIntegration: integrationTargets.has(item.id) }
+        : { agent: item.agent, hasIntegration: integrationSources.has(item.id) },
+      ariaLabel: item.kind === "block" ? item.block.title : `Subagent ${item.agent.name}`,
+      width: BLOCK_WIDTH, height: item.kind === "block" ? BLOCK_HEIGHT : DELEGATE_HEIGHT,
+      style: { pointerEvents: "all" },
+    } as ActivityNode));
+  }, [graph.nodes, graph.links]);
   const edges = useMemo<Edge[]>(() => graph.links.map(link => {
     const color = link.kind === "proposal" ? "#a1a1aa" : link.kind === "integration" ? "#34d399" : link.kind === "delegation" ? "#a78bfa" : "#71717a";
     return { id: link.id, source: link.source, target: link.target, type: "smoothstep",
       sourceHandle: link.kind === "delegation" ? "delegates" : link.kind === "integration" ? "integrated" : link.kind === "proposal" ? "plan" : "next",
       targetHandle: link.kind === "delegation" ? "parent" : link.kind === "integration" ? "integration" : link.kind === "proposal" ? "intention" : "previous",
       markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
-      style: { stroke: color, strokeWidth: 1.5, ...(link.kind === "proposal" || link.kind === "delegation" ? { strokeDasharray: "5 5" } : {}) },
+      animated: link.animated,
+      style: { stroke: color, strokeWidth: 1.5, strokeDasharray: "5 5" },
       ariaLabel: link.kind === "sequence" ? "Attività avviata successivamente" : link.kind === "proposal" ? "Possibile prossimo passo"
         : link.kind === "integration" ? "Contributo integrato" : "Incarico delegato",
     };
@@ -64,7 +71,7 @@ export function ActivityCanvas({ agent, overview, version, now, retry, chooseAge
   const error = history.error ?? future.error;
   const loading = history.loading || future.loading;
 
-  return <CanvasContext.Provider value={{ overview, now, currentId: agent.currentBlock?.id, selectedId, selectBlock: setSelectedId, chooseAgent }}>
+  return <CanvasContext.Provider value={{ now, currentId: agent.currentBlock?.id, selectedId, selectBlock: setSelectedId, chooseAgent }}>
     <section aria-label="Canvas delle attività" className="activity-canvas absolute inset-0 overflow-hidden bg-background">
       {error && <div className="absolute top-28 right-4 left-4 z-30 max-w-md sm:left-5"><ErrorNotice message={error} retry={retry}/></div>}
       {history.data && future.data || error ? <>
@@ -79,16 +86,8 @@ export function ActivityCanvas({ agent, overview, version, now, retry, chooseAge
           onClick={() => setFuturePages(old => old + 1)}>Altre proposte</Button>}
       </div>}
       {selected && <section aria-label="Dettagli del blocco selezionato" className="absolute right-3 bottom-20 left-3 z-30 flex max-h-[55%] flex-col overflow-hidden rounded-xl border bg-background/95 shadow-xl backdrop-blur sm:right-auto sm:bottom-5 sm:left-5 sm:max-h-[calc(100%-9rem)] sm:w-96">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2"><h2 className="text-xs font-medium text-muted-foreground">Dettagli</h2>
-          <Button variant="ghost" size="icon" className="size-7" aria-label="Chiudi pannello dettagli" onClick={() => setSelectedId(null)}><X className="size-3.5" aria-hidden="true"/></Button></div>
-        <div className="min-h-0 overflow-y-auto overscroll-contain p-3">
-        {selected.status === "proposed" ? <Card className="border-dashed"><CardContent>
-          <h3 className="wrap-anywhere font-medium">{selected.title}</h3>
-          {selected.summary && <p className="mt-3 wrap-anywhere text-sm leading-6 text-muted-foreground">{selected.summary}</p>}
-          <p className="mt-4 text-xs text-muted-foreground">È un’intenzione: l’agent confermerà questo passaggio quando lo avvierà.</p>
-        </CardContent></Card> : <BlockDetails key={selected.id} block={selected} overview={overview} version={version} now={now}
-          chooseAgent={chooseAgent} highlighted={selected.id === agent.currentBlock?.id}/>}
-        </div>
+        <BlockDetails key={selected.id} block={selected} overview={overview} version={version} now={now}
+          chooseAgent={chooseAgent} close={() => setSelectedId(null)}/>
       </section>}
     </section>
   </CanvasContext.Provider>;
@@ -104,7 +103,7 @@ function CanvasStage({ nodes, edges, focusId }: { nodes: ActivityNode[]; edges: 
       aria-label="Mappa dei blocchi di lavoro" fitView
       fitViewOptions={{ nodes: focusId ? [{ id: focusId }] : nodes, padding: 0.35, maxZoom: 1 }}>
       <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--border)"/>
-      <Panel position="bottom-center" className="!mb-5">
+      <Panel position="bottom-right" className="!mr-3 !mb-6 sm:!mr-5 sm:!mb-6">
         <div role="toolbar" aria-label="Navigazione canvas" className="flex items-center gap-0.5 rounded-lg border bg-background/95 p-1 shadow-lg">
           <CanvasButton label="Riduci zoom" icon={Minus} onClick={() => void zoomOut({ duration: 150 })}/>
           <CanvasButton label="Aumenta zoom" icon={Plus} onClick={() => void zoomIn({ duration: 150 })}/>
@@ -135,51 +134,50 @@ function CanvasButton({ label, icon: Icon, onClick }: { label: string; icon: typ
   return <Button variant="ghost" size="icon" className="size-8" title={label} aria-label={label} onClick={onClick}><Icon className="size-4" aria-hidden="true"/></Button>;
 }
 
-function ActivityBlockNode({ data: { block } }: NodeProps<BlockNode>) {
-  const { overview, now, currentId, selectedId, selectBlock } = useCanvas();
+function ActivityBlockNode({ data: { block, hasDelegates, hasIntegration } }: NodeProps<BlockNode>) {
+  const { now, currentId, selectedId, selectBlock } = useCanvas();
   const current = block.id === currentId;
   const proposed = block.status === "proposed";
-  const goal = overview.goals.find(goal => goal.id === block.goalId);
   return <>
     <Handle aria-hidden="true" type="target" position={Position.Top} id="previous"/>
     <Handle aria-hidden="true" type="source" position={Position.Bottom} id="next"/>
     <Handle aria-hidden="true" type="source" position={Position.Right} id="plan" style={{ top: "65%" }}/>
     <Handle aria-hidden="true" type="target" position={Position.Right} id="intention"/>
-    <Handle aria-hidden="true" type="source" position={Position.Right} id="delegates" style={{ top: "35%" }}/>
-    <Handle aria-hidden="true" type="target" position={Position.Right} id="integration" style={{ top: "82%" }}/>
+    <Handle aria-hidden="true" type="source" position={Position.Right} id="delegates" className={hasDelegates ? "connected-port" : undefined} style={{ top: "35%" }}/>
+    <Handle aria-hidden="true" type="target" position={Position.Right} id="integration" className={hasIntegration ? "connected-port" : undefined} style={{ top: "82%" }}/>
     <button className="nodrag w-full text-left outline-none" onClick={() => selectBlock(block.id)} aria-label={`Apri blocco: ${block.title}`}
       aria-pressed={selectedId === block.id} title={block.title}>
-      <Card className={cn("h-[220px] gap-3 rounded-xl px-4 py-4 shadow-lg transition-colors", proposed && "border-dashed bg-background",
+      <Card style={{ height: BLOCK_HEIGHT }} className={cn("gap-3 rounded-xl px-4 py-4 shadow-lg transition-colors", proposed && "border-dashed bg-background",
         current && (block.status === "blocked" ? "border-amber-500/60" : "border-emerald-500/60"), selectedId === block.id && "ring-2 ring-ring",
         "focus-within:ring-2")}>
-        <div className="flex items-center justify-between gap-2"><span className={cn("text-[10px] font-medium tracking-wider", current ? block.status === "blocked" ? "text-amber-400" : "text-emerald-400" : "text-muted-foreground")}>
-          {current ? "ADESSO" : proposed ? "POSSIBILE PASSO" : "ATTIVITÀ"}</span><StatusBadge status={block.status} className="px-1.5 py-0.5 text-[10px]"/></div>
-        <h3 className="line-clamp-2 text-sm leading-5 font-semibold wrap-anywhere">{block.title}</h3>
-        {(block.concern ?? block.outcome ?? block.summary) && <p className="line-clamp-2 text-xs leading-5 text-muted-foreground wrap-anywhere">{block.concern ?? block.outcome ?? block.summary}</p>}
-        {goal && <span className="mt-auto flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground" title={goal.title}><Target className="size-3 shrink-0" aria-hidden="true"/><span className="truncate">{goal.title}</span></span>}
-        <div className={cn("flex items-center justify-between gap-2 border-t pt-2 text-[10px] text-muted-foreground", !goal && "mt-auto")}>
-          <span>{proposed ? "Da confermare" : block.detailCount ? `${block.detailCount} ${block.detailCount === 1 ? "passaggio" : "passaggi"}` : "Apri dettagli"}</span>
-          <UpdatedTime value={block.updatedAt} now={now}/>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-start gap-2"><StatusIndicator status={block.status} className="mt-0.5"/>
+            <h3 className="line-clamp-2 text-sm leading-5 font-semibold wrap-anywhere">{block.title}</h3></div>
+          <UpdatedTime value={block.createdAt} now={now} label="Creato" className="pt-0.5 text-[10px]"/>
         </div>
+        {(block.concern ?? block.outcome ?? block.summary) && <p className="line-clamp-2 text-xs leading-5 text-muted-foreground wrap-anywhere">{block.concern ?? block.outcome ?? block.summary}</p>}
+        {proposed && <span className="mt-auto text-[10px] text-muted-foreground">Da confermare</span>}
       </Card>
     </button>
   </>;
 }
 
-function ActivityDelegateNode({ data: { agent } }: NodeProps<DelegateNode>) {
-  const { chooseAgent } = useCanvas();
+function ActivityDelegateNode({ data: { agent, hasIntegration } }: NodeProps<DelegateNode>) {
+  const { chooseAgent, now } = useCanvas();
   return <>
-    <Handle aria-hidden="true" type="target" position={Position.Left} id="parent"/>
-    <Handle aria-hidden="true" type="source" position={Position.Bottom} id="integrated"/>
+    <Handle aria-hidden="true" type="target" position={Position.Left} id="parent" className="connected-port"/>
+    <Handle aria-hidden="true" type="source" position={Position.Bottom} id="integrated" className={hasIntegration ? "connected-port" : undefined}/>
     <button className="nodrag w-full text-left outline-none" aria-label={`Apri subagent: ${agent.name}`} onClick={() => chooseAgent(agent.id)}>
-      <Card className="h-[184px] gap-3 rounded-xl border-violet-400/25 px-4 py-4">
-        <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-1.5 text-[10px] font-medium tracking-wider text-violet-300"><GitBranch className="size-3" aria-hidden="true"/>SUBAGENT</span>
-          <StatusBadge status={agent.status} className="px-1.5 py-0.5 text-[10px]"/></div>
-        <div className="flex min-w-0 items-center gap-2"><AgentAvatar name={agent.name} small/><h3 className="truncate text-sm font-semibold">{agent.name}</h3></div>
+      <Card style={{ height: DELEGATE_HEIGHT }} className="gap-3 rounded-xl border-violet-400/25 px-4 py-4">
+        <div className="flex items-start justify-between gap-2"><div className="flex min-w-0 items-start gap-2">
+          <StatusIndicator status={agent.currentBlock?.status === "blocked" ? "blocked" : agent.status} className="mt-0.5"/>
+          <h3 className="line-clamp-2 text-sm leading-5 font-semibold wrap-anywhere">{agent.name}</h3></div>
+          <UpdatedTime value={agent.createdAt} now={now} label="Registrato" className="pt-0.5 text-[10px]"/>
+        </div>
         <p className="line-clamp-2 text-xs leading-5 text-muted-foreground wrap-anywhere">{agent.currentBlock?.title ?? agent.mandate}</p>
-        <div className="mt-auto flex items-center justify-between gap-2 border-t pt-2 text-[10px]">
+        <div className="mt-auto flex items-center justify-between gap-2 text-[10px]">
           <span className={cn("flex items-center gap-1", agent.integratedAt ? "text-emerald-400" : "text-muted-foreground")}>
-            {agent.integratedAt && <Check className="size-3" aria-hidden="true"/>}{agent.integratedAt ? "Integrato" : agent.status === "completed" ? "Da integrare" : "Attività delegata"}
+            {agent.integratedAt ? <Check className="size-3" aria-hidden="true"/> : <GitBranch className="size-3 text-violet-300" aria-hidden="true"/>}{agent.integratedAt ? "Integrato" : agent.status === "completed" ? "Da integrare" : "Subagent"}
           </span><ArrowUpRight className="size-3.5 text-muted-foreground" aria-hidden="true"/>
         </div>
       </Card>

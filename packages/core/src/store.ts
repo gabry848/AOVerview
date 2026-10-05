@@ -287,7 +287,13 @@ export class OverviewStore {
       const rows = this.all<Omit<SessionSummary, "currentBlock">>(`SELECT s.*, a.name AS rootAgentName, a.status,
         (SELECT COUNT(*) FROM agents WHERE sessionId=s.id) AS agentCount,
         (SELECT COUNT(*) FROM agents WHERE sessionId=s.id AND status='running') AS runningCount,
+        (SELECT COUNT(*) FROM agents worker WHERE worker.sessionId=s.id AND worker.status='running'
+          AND (EXISTS(SELECT 1 FROM blocks WHERE agentId=worker.id AND status='active')
+            OR NOT EXISTS(SELECT 1 FROM blocks WHERE agentId=worker.id AND status='blocked'))) AS workingCount,
         (SELECT COUNT(*) FROM goals WHERE sessionId=s.id AND status='completed') AS completedGoals,
+        (SELECT COUNT(*) FROM goals WHERE sessionId=s.id AND status NOT IN ('completed','cancelled')) AS openGoals,
+        (SELECT COUNT(*) FROM blocks b JOIN agents child ON child.id=b.agentId
+          WHERE child.sessionId=s.id AND b.status='blocked') AS blockedCount,
         (SELECT COUNT(*) FROM goals WHERE sessionId=s.id) AS totalGoals
         FROM sessions s JOIN agents a ON a.id=s.rootAgentId
         ORDER BY s.createdAt DESC, s.id DESC LIMIT ? OFFSET ?`, limit + 1, offset);

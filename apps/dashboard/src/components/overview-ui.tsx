@@ -1,4 +1,4 @@
-import { Activity, AlertCircle, Check, Clock3, RefreshCw, X } from "lucide-react";
+import { Activity, AlertCircle, Check, CircleDashed, Clock3, LoaderCircle, RefreshCw, X } from "lucide-react";
 import type { AgentStatus, BlockStatus, GoalStatus } from "@aoverview/core/contracts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -33,6 +33,17 @@ export function StatusBadge({ status, className }: { status: Status; className?:
   </Badge>;
 }
 
+export function StatusIndicator({ status, className }: { status: Status; className?: string }) {
+  const working = status === "running" || status === "active";
+  const Icon = working ? LoaderCircle : status === "completed" ? Check : status === "blocked" || status === "failed" ? AlertCircle
+    : status === "cancelled" ? X : status === "proposed" ? CircleDashed : Clock3;
+  return <span title={statusLabels[status]} className={cn("inline-flex shrink-0 items-center", working || status === "completed" ? "text-emerald-400"
+    : status === "blocked" ? "text-amber-400" : status === "failed" ? "text-red-400" : "text-muted-foreground", className)}>
+    <Icon className={cn("size-4", working && "animate-spin motion-reduce:animate-none")} aria-hidden="true"/>
+    <span className="sr-only">{statusLabels[status]}</span>
+  </span>;
+}
+
 export function AgentAvatar({ name, small = false }: { name: string; small?: boolean }) {
   return <Avatar className={small ? "size-6" : "size-8"} aria-hidden="true">
     <AvatarFallback className={small ? "text-xs" : "text-sm"}>{Array.from(name)[0]?.toUpperCase() ?? "A"}</AvatarFallback>
@@ -48,9 +59,9 @@ export function ago(value: number, now = Date.now()) {
   return relative.format(-Math.floor(seconds / 86400), "day");
 }
 
-export function UpdatedTime({ value, now }: { value: number; now: number }) {
-  return <time className="shrink-0 text-xs text-muted-foreground" dateTime={new Date(value).toISOString()}
-    title={new Date(value).toLocaleString("it")}>{ago(value, now)}</time>;
+export function UpdatedTime({ value, now, label = "Aggiornato", className }: { value: number; now: number; label?: string; className?: string }) {
+  return <time className={cn("shrink-0 text-xs text-muted-foreground", className)} dateTime={new Date(value).toISOString()}
+    aria-label={`${label} ${ago(value, now)}`} title={`${label}: ${new Date(value).toLocaleString("it")}`}>{ago(value, now)}</time>;
 }
 
 export function ErrorNotice({ message, retry }: { message: string; retry: () => void }) {

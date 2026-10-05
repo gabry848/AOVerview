@@ -1,8 +1,8 @@
 import type { AgentOverview, Block } from "@aoverview/core/contracts";
 
 export const BLOCK_WIDTH = 280;
-export const BLOCK_HEIGHT = 220;
-export const DELEGATE_HEIGHT = 184;
+export const BLOCK_HEIGHT = 156;
+export const DELEGATE_HEIGHT = 156;
 
 export type GraphItem = {
   id: string; position: { x: number; y: number };
@@ -63,5 +63,13 @@ export function buildActivityGraph({ agentId, history, proposed, current, agents
         }
       });
   }
-  return { nodes, links, blocks, future, focusId: current ? blockNodeId(current.id) : blocks.at(-1) ? blockNodeId(blocks.at(-1)!.id) : nodes[0]?.id };
+  const targets = new Map(nodes.map(node => [node.id, node]));
+  const visibleLinks = links.map(link => {
+    const target = targets.get(link.target);
+    const animated = link.kind === "sequence" && target?.kind === "block" && target.block.status === "active"
+      || link.kind === "delegation" && target?.kind === "delegate" && target.agent.status === "running"
+        && target.agent.currentBlock?.status !== "blocked";
+    return { ...link, animated };
+  });
+  return { nodes, links: visibleLinks, blocks, future, focusId: current ? blockNodeId(current.id) : blocks.at(-1) ? blockNodeId(blocks.at(-1)!.id) : nodes[0]?.id };
 }

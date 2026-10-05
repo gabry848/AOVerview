@@ -6,7 +6,7 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import type { OpenResult, RegisterResult, ResumeResult, WriteResult } from "@aoverview/core";
 import { createApiApp } from "../apps/api/src/app.js";
 import { createMcpServer } from "../apps/mcp/src/server.js";
-import { fixture, open, update } from "./helpers.js";
+import { delegate, fixture, open, update } from "./helpers.js";
 
 test("API provides paginated read-only snapshots and never exposes writer handles", async t => {
   const f = fixture(t); const reader = f.connect(true);
@@ -82,6 +82,32 @@ test("SSE delivers writes from another connection and replays or resets reconnec
     const first = await reset.body!.getReader().read();
     assert.match(decoder.decode(first.value), /event: reset/);
   } finally { resetController.abort(); }
+});
+
+test("home counts unfinished goals and blocked activities across parent and subagents", async t => {
+  const f = fixture(t); const root = open(f.store); const other = open(f.store, false);
+  update(f.store, root, [
+    { op: "goal", id: "g1", status: "blocked" },
+    { op: "goal", id: "g2", title: "Still in progress", status: "active" },
+    { op: "goal", id: "g3", title: "Already delivered", status: "completed" },
+    { op: "goal", id: "g4", title: "Removed from scope", status: "cancelled" },
+    { op: "block", id: "work", title: "Coordinate work", status: "active" },
+  ]);
+  const child = delegate(f.store, root);
+  update(f.store, child, [{ op: "block", id: "work", title: "Inspect a dependency", status: "active" },
+    { op: "block", id: "work", status: "blocked", concern: "Waiting for a dependency" }]);
+  update(f.store, root, [{ op: "block", id: "work", status: "blocked", concern: "Needs a decision" }]);
+  const api = createApiApp(f.connect(true)); t.after(api.close);
+  const list = await (await api.app.request("/api/v1/sessions")).json();
+  const main = list.items.find((item: { id: string }) => item.id === root.sessionId);
+  const unrelated = list.items.find((item: { id: string }) => item.id === other.sessionId);
+  assert.equal(main.openGoals, 2); assert.equal(main.completedGoals, 1); assert.equal(main.totalGoals, 4);
+  assert.equal(main.blockedCount, 2); assert.equal(main.runningCount, 2); assert.equal(main.workingCount, 0);
+  assert.equal(unrelated.openGoals, 0); assert.equal(unrelated.blockedCount, 0);
+  update(f.store, child, [{ op: "block", id: "work", status: "active" }]);
+  const refreshed = await (await api.app.request("/api/v1/sessions")).json();
+  const active = refreshed.items.find((item: { id: string }) => item.id === root.sessionId);
+  assert.equal(active.blockedCount, 1); assert.equal(active.workingCount, 1);
 });
 
 test("real MCP clients open two sessions, delegate, report progress, integrate and resume", async t => {

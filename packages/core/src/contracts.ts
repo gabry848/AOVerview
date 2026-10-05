@@ -90,8 +90,8 @@ export interface Detail {
 export interface BlockDetail extends Block { details: Detail[] }
 export interface AgentOverview extends Agent { currentBlock: Block | null; proposedCount: number }
 export interface SessionSummary extends Session {
-  rootAgentName: string; status: AgentStatus; agentCount: number; runningCount: number;
-  completedGoals: number; totalGoals: number; currentBlock: Block | null;
+  rootAgentName: string; status: AgentStatus; agentCount: number; runningCount: number; workingCount: number;
+  completedGoals: number; totalGoals: number; openGoals: number; blockedCount: number; currentBlock: Block | null;
 }
 export interface SessionOverview { session: Session; goals: Goal[]; agents: AgentOverview[] }
 export interface Page<T> { items: T[]; nextCursor: string | null }

@@ -71,3 +71,19 @@ test("canvas stacks work vertically and leaves space for each block's delegated 
     assert(delegates[index]!.position.y >= delegates[index - 1]!.position.y + DELEGATE_HEIGHT);
   }
 });
+
+test("only execution links animate; intentions, blocked work and completed contributions stay still", () => {
+  const current = block("work", { status: "active", endedAt: null, startedAt: 3 });
+  const options = { agentId: "root", current, history: [block("first")],
+    proposed: [block("maybe", { status: "proposed", startedAt: null })],
+    agents: [child("working", { status: "running", currentBlock: block("check", { status: "active" }) }),
+      child("reserved", { status: "reserved" }), child("completed", { integratedAt: 4, integratedIntoBlockId: "work" })] };
+  const graph = buildActivityGraph(options);
+  assert.deepEqual(graph.links.filter(link => link.animated).map(link => link.id), ["sequence:first:work", "delegation:working"]);
+  const paused = buildActivityGraph({ ...options, current: { ...current, status: "blocked" },
+    agents: [child("working", { status: "running", currentBlock: block("check", { status: "blocked" }) })] });
+  assert(paused.links.every(link => !link.animated));
+  const completed = buildActivityGraph({ ...options, current: null,
+    history: [...options.history, { ...current, status: "completed", endedAt: 6 }], agents: [child("working")] });
+  assert(completed.links.every(link => !link.animated));
+});

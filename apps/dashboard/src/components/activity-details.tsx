@@ -1,99 +1,80 @@
-import { useState } from "react";
-import { Activity, ArrowRight, Check, ChevronRight, GitBranch, OctagonAlert, Target } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowUpRight, GitBranch, Target, X } from "lucide-react";
 import type { AgentOverview, Block, BlockDetail, SessionOverview } from "@aoverview/core/contracts";
 import { useResource } from "../data";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Separator } from "@/components/ui/separator";
-import { AgentAvatar, ErrorNotice, StatusBadge, UpdatedTime, statusLabels } from "./overview-ui";
-import { cn } from "@/lib/utils";
+import { StatusIndicator, UpdatedTime, statusLabels } from "./overview-ui";
 
-export function BlockDetails({ block, overview, version, now, chooseAgent, highlighted = false }: {
-  block: Block; overview: SessionOverview; version: string; now: number; chooseAgent: (id: string) => void; highlighted?: boolean;
+export function BlockDetails({ block, overview, version, now, chooseAgent, close }: {
+  block: Block; overview: SessionOverview; version: string; now: number;
+  chooseAgent: (id: string) => void; close: () => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
   const [retry, setRetry] = useState(0);
-  const detail = useResource<BlockDetail>(expanded ? `/api/v1/agents/${block.agentId}/blocks/${block.id}` : null, `${version}:${retry}`);
+  const proposed = block.status === "proposed";
+  const detail = useResource<BlockDetail>(proposed ? null : `/api/v1/agents/${block.agentId}/blocks/${block.id}`, `${version}:${retry}`);
   const children = overview.agents.filter(agent => agent.parentAgentId === block.agentId && agent.parentBlockId === block.id);
   const goal = overview.goals.find(item => item.id === block.goalId);
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, [close]);
 
-  return <Collapsible open={expanded} onOpenChange={setExpanded} asChild>
-    <Card role="article" className={cn("gap-4 py-5", highlighted && (block.status === "blocked" ? "border-amber-500/30" : "border-emerald-500/30"))}>
-      <CardHeader className="gap-4 px-5">
-        <div className="flex items-center justify-between gap-3"><StatusBadge status={block.status}/><UpdatedTime value={block.updatedAt} now={now}/></div>
-        <h3><CollapsibleTrigger asChild><Button variant="ghost" className="h-auto w-full justify-between gap-4 p-0 text-left text-base leading-6 font-semibold whitespace-normal hover:bg-transparent aria-expanded:bg-transparent">
-          <span className="min-w-0 wrap-anywhere">{block.title}</span><ChevronRight className={cn("size-4 text-muted-foreground transition-transform", expanded && "rotate-90")} aria-hidden="true"/>
-        </Button></CollapsibleTrigger></h3>
-        {block.summary && <p className="wrap-anywhere text-sm leading-6 whitespace-pre-line text-muted-foreground">{block.summary}</p>}
-      </CardHeader>
-      <CardContent className="space-y-4 px-5">
-        {block.outcome && <Alert role="note" className="border-0 bg-muted/60 px-3 py-2.5">
-          <Check aria-hidden="true"/><AlertDescription className="wrap-anywhere leading-6 whitespace-pre-line text-foreground">{block.outcome}</AlertDescription>
-        </Alert>}
-        {block.concern && <Alert role="note" className="border-amber-500/20 bg-amber-500/5 px-3 py-2.5 text-amber-300">
-          <OctagonAlert aria-hidden="true"/><AlertTitle>Punto di attenzione</AlertTitle>
-          <AlertDescription className="wrap-anywhere leading-6 whitespace-pre-line text-amber-200/90">{block.concern}</AlertDescription>
-        </Alert>}
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          {goal && <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"><Target className="size-3.5 shrink-0" aria-hidden="true"/><span className="wrap-anywhere">{goal.title}</span></span>}
-          <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="ml-auto text-xs text-muted-foreground">
-            {expanded ? "Chiudi dettagli" : block.detailCount ? `${block.detailCount} ${block.detailCount === 1 ? "passaggio" : "passaggi"}` : "Apri dettagli"}
-          </Button></CollapsibleTrigger>
-        </div>
-        <CollapsibleContent className="space-y-5" data-block-details>
-          <Separator/>
-          {detail.loading && !detail.data && <p className="text-sm text-muted-foreground" role="status">Caricamento dei dettagli…</p>}
-          {detail.error && <ErrorNotice message={detail.error} retry={() => setRetry(old => old + 1)}/>}
-          {detail.data && <div>
-            <h4 className="mb-4 text-xs font-medium text-muted-foreground">Passaggi svolti</h4>
-            {detail.data.details.length === 0 ? <p className="text-sm text-muted-foreground">Non sono ancora stati aggiunti passaggi.</p>
-              : <ol className="space-y-5">{detail.data.details.map((item, index) => <li key={item.id} className="flex gap-3">
-                <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground" aria-hidden="true">{index + 1}</span>
-                <div className="min-w-0 space-y-2">
-                  <div><span className="text-[10px] font-medium text-muted-foreground">Azione</span>
-                    <p className="wrap-anywhere text-sm leading-6 whitespace-pre-line">{item.action}</p></div>
-                  {item.result && <div><span className="text-[10px] font-medium text-muted-foreground">Esito</span>
-                    <p className="wrap-anywhere text-sm leading-6 whitespace-pre-line">{item.result}</p></div>}
-                  {item.reference && <div><span className="text-[10px] font-medium text-muted-foreground">Riferimento</span>
-                    <p className="mt-1 rounded-md bg-muted/50 px-2 py-1.5 font-mono text-xs leading-5 whitespace-pre-line wrap-anywhere">{item.reference}</p></div>}
-                </div>
-              </li>)}</ol>}
-          </div>}
-        </CollapsibleContent>
-        {children.length > 0 && <Delegations children={children} chooseAgent={chooseAgent}/>}
-      </CardContent>
-    </Card>
-  </Collapsible>;
+  return <>
+    <header className="shrink-0 border-b px-5 py-4">
+      <div className="flex items-start gap-2.5"><StatusIndicator status={block.status} className="mt-1"/>
+        <h2 className="min-w-0 flex-1 wrap-anywhere text-sm leading-6 font-semibold">{block.title}</h2>
+        <Button variant="ghost" size="icon" className="-mt-1 -mr-2 size-8 shrink-0" aria-label="Chiudi pannello dettagli" onClick={close}>
+          <X className="size-4" aria-hidden="true"/>
+        </Button>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <span>{statusLabels[block.status]}</span><span className="flex items-center gap-1.5">Creato <UpdatedTime value={block.createdAt} now={now} label="Creato"/></span>
+      </div>
+    </header>
+    <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-4">
+      {goal && <p className="mb-4 flex items-start gap-2 text-xs leading-5 text-muted-foreground"><Target className="mt-0.5 size-3.5 shrink-0" aria-hidden="true"/>
+        <span className="wrap-anywhere">{goal.title}</span></p>}
+      {block.summary && block.summary !== block.outcome && <p className="mb-4 wrap-anywhere text-sm leading-6 whitespace-pre-line text-muted-foreground">{block.summary}</p>}
+      {proposed && <p className="text-sm leading-6 text-muted-foreground">Passaggio da confermare. L’agent lo attiverà quando inizierà il lavoro.</p>}
+      {block.outcome && <div className="mb-5"><h3 className="mb-1 text-xs text-muted-foreground">Esito dell’attività</h3>
+        <p className="wrap-anywhere text-sm leading-6 whitespace-pre-line">{block.outcome}</p></div>}
+      {block.concern && <div role="note" className="mb-5 border-l-2 border-amber-400/50 pl-3">
+        <h3 className="mb-1 text-xs font-medium text-amber-300">Punto di attenzione</h3>
+        <p className="wrap-anywhere text-sm leading-6 whitespace-pre-line text-amber-200/90">{block.concern}</p>
+      </div>}
+      {!proposed && <section data-block-details aria-label="Passaggi svolti">
+        <h3 className="mb-3 text-xs font-medium text-muted-foreground">Passaggi{detail.data && detail.data.details.length > 0 && ` · ${detail.data.details.length}`}</h3>
+        {detail.loading && !detail.data && <p role="status" className="text-sm text-muted-foreground">Caricamento…</p>}
+        {detail.error && <div role="alert" className="space-y-2 text-sm"><p className="text-red-400">{detail.error}</p>
+          <Button variant="ghost" size="sm" className="-ml-3" onClick={() => setRetry(old => old + 1)}>Riprova</Button></div>}
+        {detail.data && (detail.data.details.length === 0
+          ? <p className="text-sm leading-6 text-muted-foreground">L’agent non ha ancora riportato passaggi.</p>
+          : <ol className="divide-y">{detail.data.details.map(item => <li key={item.id} className="py-4 first:pt-0 last:pb-0">
+            <dl className="space-y-2.5">
+              <div><dt className="text-[11px] text-muted-foreground">Azione</dt><dd className="mt-0.5 wrap-anywhere text-sm leading-6 font-medium whitespace-pre-line">{item.action}</dd></div>
+              {item.result && <div><dt className="text-[11px] text-muted-foreground">Esito</dt><dd className="mt-0.5 wrap-anywhere text-sm leading-6 whitespace-pre-line">{item.result}</dd></div>}
+              {item.reference && <div><dt className="text-[11px] text-muted-foreground">Riferimento</dt><dd className="mt-1 wrap-anywhere font-mono text-xs leading-5 whitespace-pre-line text-muted-foreground">{item.reference}</dd></div>}
+            </dl>
+          </li>)}</ol>)}
+      </section>}
+      {children.length > 0 && <section className="mt-5 border-t pt-4" aria-label="Contributi dei subagent">
+        <h3 className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground"><GitBranch className="size-3.5" aria-hidden="true"/>Subagent · {children.length}</h3>
+        <ul className="divide-y">{children.map(child => <DelegationRow key={child.id} child={child} chooseAgent={chooseAgent}/>)}</ul>
+      </section>}
+    </div>
+  </>;
 }
 
-function Delegations({ children, chooseAgent }: { children: AgentOverview[]; chooseAgent: (id: string) => void }) {
-  return <Collapsible className="group/delegations space-y-4">
-    <Separator/>
-    <CollapsibleTrigger asChild><Button variant="ghost" className="h-auto w-full justify-between gap-2 px-0 text-xs text-muted-foreground hover:bg-transparent aria-expanded:bg-transparent">
-      <span className="flex items-center gap-2"><GitBranch className="size-3.5" aria-hidden="true"/>
-        {children.length === 1 ? "Un contributo delegato" : `${children.length} contributi delegati`}</span>
-      <ChevronRight className="size-3.5 transition-transform group-data-[state=open]/delegations:rotate-90" aria-hidden="true"/>
-    </Button></CollapsibleTrigger>
-    <CollapsibleContent className="space-y-3">
-      {children.map(child => <Card key={child.id} className="gap-3 bg-muted/30 py-3">
-        <CardContent className="space-y-3 px-3">
-          <div className="flex flex-wrap items-center gap-2"><AgentAvatar name={child.name} small/>
-            <h4 className="min-w-0 flex-1 wrap-anywhere text-sm font-medium">{child.name}</h4><StatusBadge status={child.status}/></div>
-          <p className="wrap-anywhere text-sm leading-6 text-muted-foreground">{child.mandate}</p>
-          {child.currentBlock && <p className="flex items-start gap-2 text-xs leading-5"><Activity className="mt-0.5 size-3.5 shrink-0 text-emerald-400" aria-hidden="true"/>
-            <span className="wrap-anywhere">{child.currentBlock.title}</span></p>}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className={cn("flex items-center gap-1.5 text-xs", child.integratedAt ? "text-emerald-400" : "text-muted-foreground")}>
-              {child.integratedAt && <Check className="size-3" aria-hidden="true"/>}
-              {child.integratedAt ? "Integrato" : child.status === "completed" ? "Pronto · da integrare" : child.status === "reserved" ? "Avvio da confermare" : statusLabels[child.status]}
-            </span>
-            <Button variant="ghost" size="sm" className="text-xs" onClick={() => chooseAgent(child.id)}>Apri attività<ArrowRight className="size-3.5" aria-hidden="true"/></Button>
-          </div>
-          {child.integrationNote && <p className="border-t pt-3 wrap-anywhere text-xs leading-5 text-muted-foreground">{child.integrationNote}</p>}
-        </CardContent>
-      </Card>)}
-    </CollapsibleContent>
-  </Collapsible>;
+function DelegationRow({ child, chooseAgent }: { child: AgentOverview; chooseAgent: (id: string) => void }) {
+  const status = child.currentBlock?.status === "blocked" ? "blocked" : child.status;
+  const stage = child.integratedAt ? "Integrato" : child.status === "completed" ? "Da integrare" : statusLabels[status];
+  return <li className="py-3 first:pt-0 last:pb-0">
+    <button onClick={() => chooseAgent(child.id)} aria-label={`Apri subagent: ${child.name}`}
+      className="group flex w-full items-center gap-2.5 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <StatusIndicator status={status}/><span className="min-w-0 flex-1 wrap-anywhere text-sm font-medium group-hover:underline">{child.name}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{stage}</span><ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true"/>
+    </button>
+    {(child.integrationNote ?? child.mandate) && <p className="mt-1.5 wrap-anywhere text-xs leading-5 text-muted-foreground">{child.integrationNote ?? child.mandate}</p>}
+  </li>;
 }
