@@ -173,3 +173,7 @@ npm run build
 I test usano database temporanei e coprono atomicità, isolamento, retry, stati, deleghe annidate, ripresa, paginazione, concorrenza multiprocesso, API/SSE, client MCP reali e avvio/spegnimento del launcher.
 
 La prima versione è personale e locale, senza login o accesso remoto. Non registra conversazioni o log grezzi: invia contenuti adatti alla dashboard. Le UI MCP Apps potranno riutilizzare in seguito modello e API.
+
+## Licenza
+
+AOVerview è distribuito con [licenza MIT](LICENSE). Le attribuzioni e la licenza dei componenti shadcn/ui sono riportate in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

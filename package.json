@@ -1,6 +1,7 @@
 {
   "name": "aoverview",
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Dashboard locale del lavoro degli agent, alimentata tramite MCP.",
   "private": true,
   "type": "module",
