@@ -1,28 +1,33 @@
 {
   "name": "aoverview",
   "version": "0.1.0",
-  "description": "Base TypeScript per API, server MCP e dashboard di visualizzazione dati.",
+  "description": "Dashboard locale del lavoro degli agent, alimentata tramite MCP.",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.22.2"
+    "node": ">=24.0.0"
   },
+  "workspaces": [
+    "packages/core",
+    "apps/mcp",
+    "apps/api",
+    "apps/dashboard"
+  ],
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "mcp-use": "^2.7.3",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "zod": "^4.6.5"
+    "dev": "node scripts/run.mjs dev",
+    "build": "npm run build -w @aoverview/core && npm run build -w @aoverview/mcp && npm run build -w @aoverview/api && npm run build -w @aoverview/dashboard",
+    "start": "node scripts/run.mjs start",
+    "typecheck": "npm run build -w @aoverview/core && npm run typecheck --workspaces && tsc -p tsconfig.test.json",
+    "test": "npm run build -w @aoverview/core && node --import tsx --test test/*.test.ts",
+    "db:migrate": "npm run build -w @aoverview/core && node packages/core/dist/migrate.js"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@hono/node-server": "^1.19.0",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.2"

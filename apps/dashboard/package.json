@@ -1,0 +1,19 @@
+{
+  "name": "@aoverview/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && tsc -p tsconfig.server.json",
+    "start": "node dist-server/server.js",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit"
+  },
+  "dependencies": {
+    "@aoverview/core": "0.1.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "hono": "^4.13.7",
+    "@hono/node-server": "^1.19.0"
+  }
+}

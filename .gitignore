@@ -12,6 +12,7 @@ node_modules/
 
 # Build and coverage
 dist/
+dist-server/
 coverage/
 *.tsbuildinfo
 
@@ -27,3 +28,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Local database
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

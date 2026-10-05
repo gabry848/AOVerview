@@ -1,0 +1,13 @@
+{
+  "name": "@aoverview/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --include '../../packages/core/dist/**/*.js' src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": { "@aoverview/core": "0.1.0", "mcp-use": "^2.7.3" }
+}
