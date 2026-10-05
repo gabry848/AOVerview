@@ -115,8 +115,9 @@ export class OverviewStore {
       const sessionId = `s_${randomUUID()}`;
       const agentId = `a_${randomUUID()}`;
       const handle = `w_${randomBytes(24).toString("base64url")}`;
-      this.run("INSERT INTO sessions(id,title,rootAgentId,createdAt,updatedAt) VALUES(?,?,?,?,?)",
-        sessionId, data.title, agentId, now, now);
+      const detailLevel = data.detailLevel ?? "medium";
+      this.run("INSERT INTO sessions(id,title,rootAgentId,detailLevel,createdAt,updatedAt) VALUES(?,?,?,?,?,?)",
+        sessionId, data.title, agentId, detailLevel, now, now);
       this.run(`INSERT INTO agents(id,sessionId,handle,name,status,createdAt,updatedAt)
         VALUES(?,?,?,?,'running',?,?)`, agentId, sessionId, handle, data.agentName, now, now);
       const ids = new Set<string>();
@@ -127,7 +128,7 @@ export class OverviewStore {
           VALUES(?,?,?,?,'pending',?,?,?)`, sessionId, goal.id, goal.title, goal.description ?? null, position, now, now);
       }
       this.run("INSERT INTO changes(sessionId,agentId) VALUES(?,?)", sessionId, agentId);
-      return { sessionId, agentId, handle, revision: 0 };
+      return { sessionId, agentId, handle, revision: 0, detailLevel };
     });
   }
 
@@ -210,10 +211,11 @@ export class OverviewStore {
     for (const detail of op.details ?? []) {
       requireCondition(startedAt !== null, "UNSTARTED_BLOCK", "Proposed blocks cannot contain work already performed.");
       const old = this.one<Detail>("SELECT * FROM details WHERE agentId=? AND blockId=? AND id=?", agent.id, op.id, detail.id);
-      this.run(`INSERT INTO details(agentId,blockId,id,action,result,position,createdAt,updatedAt)
-        VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(agentId,blockId,id) DO UPDATE SET
-        action=excluded.action, result=excluded.result, updatedAt=excluded.updatedAt`, agent.id, op.id, detail.id,
+      this.run(`INSERT INTO details(agentId,blockId,id,action,result,reference,position,createdAt,updatedAt)
+        VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(agentId,blockId,id) DO UPDATE SET
+        action=excluded.action, result=excluded.result, reference=excluded.reference, updatedAt=excluded.updatedAt`, agent.id, op.id, detail.id,
         detail.action, detail.result === undefined ? old?.result ?? null : detail.result,
+        detail.reference === undefined ? old?.reference ?? null : detail.reference,
         old?.position ?? this.nextPosition("details", "agentId=? AND blockId=?", agent.id, op.id), old?.createdAt ?? now, now);
     }
   }
@@ -255,7 +257,8 @@ export class OverviewStore {
       const handle = `w_${randomBytes(24).toString("base64url")}`;
       this.run(`INSERT INTO agents(id,sessionId,parentAgentId,parentBlockId,goalId,handle,name,mandate,status,createdAt,updatedAt)
         VALUES(?,?,?,?,?,?,?,?,'reserved',?,?)`, childId, parent.sessionId, parent.id, block.id, goalId, handle, data.name, data.mandate, now, now);
-      return { ...this.touch(parent, now), child: { agentId: childId, sessionId: parent.sessionId, handle, revision: 0 } };
+      const detailLevel = this.one<Session>("SELECT * FROM sessions WHERE id=?", parent.sessionId)!.detailLevel;
+      return { ...this.touch(parent, now), child: { agentId: childId, sessionId: parent.sessionId, handle, revision: 0, detailLevel } };
     });
   }
 
@@ -316,10 +319,11 @@ export class OverviewStore {
     return this.transaction(false, () => {
       const agent = this.authenticate(handle);
       const activeBlock = this.one<Block>(`${blockSelection} WHERE b.agentId=? AND b.status='active'`, agent.id);
-      const active = activeBlock ? { ...context(activeBlock), details: this.all<Pick<Detail, "id" | "action" | "result">>(`SELECT id,action,result FROM details
+      const active = activeBlock ? { ...context(activeBlock), details: this.all<Pick<Detail, "id" | "action" | "result" | "reference">>(`SELECT id,action,result,reference FROM details
         WHERE agentId=? AND blockId=? ORDER BY position DESC LIMIT 3`, agent.id, activeBlock.id).reverse() } : null;
       return {
         agentId: agent.id, sessionId: agent.sessionId, revision: agent.revision,
+        detailLevel: this.one<Session>("SELECT * FROM sessions WHERE id=?", agent.sessionId)!.detailLevel,
         status: agent.status, mandate: agent.mandate, parentAgentId: agent.parentAgentId, goalId: agent.goalId,
         goals: this.all<Pick<Goal, "id" | "title" | "status">>("SELECT id,title,status FROM goals WHERE sessionId=? ORDER BY position", agent.sessionId),
         active,

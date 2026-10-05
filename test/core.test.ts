@@ -56,13 +56,84 @@ test("partial updates preserve fields and detail IDs; null explicitly clears val
   const { store } = fixture(t);
   const root = open(store);
   update(store, root, [{ op: "block", id: "work", title: "Persistence", status: "active", goalId: "g1", summary: "Save progress", concern: "Unverified",
-    details: [{ id: "d1", action: "Inspect storage", result: "Ready" }, { id: "d2", action: "Define transactions" }] }]);
+    details: [{ id: "d1", action: "Inspect storage", result: "Ready", reference: "src/storage.ts" }, { id: "d2", action: "Define transactions" }] }]);
   update(store, root, [{ op: "block", id: "work", concern: null, details: [{ id: "d1", action: "Inspect persistent storage", result: null }] }]);
   const block = store.getBlock(root.agentId, "work");
   assert.equal(block.title, "Persistence"); assert.equal(block.summary, "Save progress");
   assert.equal(block.goalId, "g1"); assert.equal(block.concern, null);
   assert.equal(block.details.length, 2); assert.equal(block.details[0]?.result, null);
   assert.equal(block.details[1]?.action, "Define transactions");
+  assert.equal(block.details[0]?.reference, "src/storage.ts");
+  assert.equal(block.details[1]?.reference, null);
+  update(store, root, [{ op: "block", id: "work", details: [{ id: "d1", action: "Inspect persistent storage", reference: "test/storage.test.ts" }] }]);
+  assert.equal(store.getBlock(root.agentId, "work").details[0]?.reference, "test/storage.test.ts");
+  update(store, root, [{ op: "block", id: "work", details: [{ id: "d1", action: "Inspect persistent storage", reference: null }] }]);
+  assert.equal(store.getBlock(root.agentId, "work").details[0]?.reference, null);
+});
+
+test("detail levels default to medium, persist per session and propagate through nested delegates", t => {
+  const f = fixture(t);
+  assert.equal(open(f.store).detailLevel, "medium");
+  for (const detailLevel of ["low", "medium", "high"] as const) {
+    const input = { requestId: randomUUID(), title: "Library", agentName: "Main", detailLevel,
+      goals: [{ id: "g1", title: "Deliver a complete library" }] };
+    const root = f.store.open(input);
+    assert.deepEqual(f.store.open(input), root);
+    assert.equal(root.detailLevel, detailLevel);
+    update(f.store, root, [{ op: "block", id: "work", title: "Build storage", goalId: "g1", status: "active" }]);
+    const child = delegate(f.store, root);
+    update(f.store, child, [{ op: "block", id: "work", title: "Verify storage", status: "active" }]);
+    const grandchild = delegate(f.store, child);
+    for (const writer of [root, child, grandchild]) {
+      assert.equal(writer.detailLevel, detailLevel);
+      assert.equal(f.connect(true).resume({ handle: writer.handle }).detailLevel, detailLevel);
+    }
+    update(f.store, root, [{ op: "block", id: "work", status: "completed" }]);
+    const snapshot = f.connect(true).getSession(root.sessionId);
+    assert.equal(snapshot.session.detailLevel, detailLevel);
+    assert.equal(snapshot.goals[0]?.title, "Deliver a complete library");
+    assert.equal(snapshot.goals[0]?.status, "pending");
+    assert.equal(f.store.listSessions().items.find(s => s.id === root.sessionId)?.detailLevel, detailLevel);
+  }
+  assert.throws(() => f.store.open({ requestId: randomUUID(), title: "Bad", agentName: "Main", detailLevel: "very-high" }));
+  assert.equal(f.store.listSessions().items.length, 4);
+});
+
+test("invalid references are rejected without changing block, revision or notifications", t => {
+  const { store } = fixture(t); const root = open(store);
+  update(store, root, [{ op: "block", id: "work", title: "Inspect evidence", status: "active" }]);
+  const sequence = store.latestSequence();
+  for (const reference of [" ", "x".repeat(601), 123]) {
+    assert.throws(() => store.update({ handle: root.handle, requestId: randomUUID(), expectedRevision: root.revision,
+      operations: [{ op: "block", id: "work", details: [{ id: "d1", action: "Check evidence", reference }] }] }));
+  }
+  assert.equal(store.getBlock(root.agentId, "work").detailCount, 0);
+  assert.equal(store.resume({ handle: root.handle }).revision, root.revision);
+  assert.equal(store.latestSequence(), sequence);
+});
+
+test("migration upgrades version-one data without changing history or exact retry receipts", t => {
+  const f = fixture(t);
+  const input = { requestId: randomUUID(), title: "Legacy session", agentName: "Pi" };
+  const root = f.store.open(input);
+  update(f.store, root, [{ op: "block", id: "work", title: "Legacy work", status: "active",
+    details: [{ id: "d1", action: "Checked legacy storage", result: "Existing data available" }] }]);
+  const before = f.store.getBlock(root.agentId, "work");
+  const sequence = f.store.latestSequence();
+  // Restore the v1 table shape and original receipt payload, as stored by released clients.
+  const { detailLevel: _, ...legacyIdentity } = { ...root, revision: 0 };
+  f.store.db.exec("ALTER TABLE sessions DROP COLUMN detailLevel; ALTER TABLE details DROP COLUMN reference; PRAGMA user_version=1;");
+  f.store.db.prepare("UPDATE receipts SET result=? WHERE scope='open' AND requestId=?").run(JSON.stringify(legacyIdentity), input.requestId);
+  migrateDatabase(f.path);
+  migrateDatabase(f.path);
+  const writer = f.connect();
+  assert.equal(writer.getSession(root.sessionId).session.detailLevel, "medium");
+  assert.deepEqual(writer.getBlock(root.agentId, "work"), before);
+  assert.deepEqual(writer.open(input), legacyIdentity);
+  assert.equal(writer.resume({ handle: root.handle }).detailLevel, "medium");
+  assert.equal(writer.latestSequence(), sequence);
+  update(writer, root, [{ op: "block", id: "work", details: [{ id: "d1", action: "Checked legacy storage", reference: "src/storage.ts" }] }]);
+  assert.equal(f.connect(true).getBlock(root.agentId, "work").details[0]?.reference, "src/storage.ts");
 });
 
 test("tentative blocks can change or be cancelled but cannot contain performed work", t => {
@@ -151,13 +222,14 @@ test("explicit failure closes own work without inferring that descendants stoppe
 
 test("resume stays compact and persistence survives reopening and repeated migrations", t => {
   const f = fixture(t); const root = open(f.store);
-  const details = Array.from({ length: 8 }, (_, i) => ({ id: `d${i}`, action: `Step ${i}` }));
+  const details = Array.from({ length: 8 }, (_, i) => ({ id: `d${i}`, action: `Step ${i}`, reference: `test/check-${i}.ts` }));
   update(f.store, root, [{ op: "block", id: "work", title: "Current", status: "active", details }]);
   migrateDatabase(f.path);
   const reader = f.connect(true);
   const resumed = reader.resume({ handle: root.handle });
   assert.equal(resumed.revision, 1); assert.equal(resumed.active?.details.length, 3);
   assert.equal(resumed.active?.details[0]?.id, "d5");
+  assert.equal(resumed.active?.details[0]?.reference, "test/check-5.ts");
   assert(!JSON.stringify(reader.getSession(root.sessionId)).includes(root.handle));
   assert(!("createdAt" in resumed.active!));
   expectCode(() => update(reader, root, [{ op: "goal", id: "g1", status: "completed" }]), "READ_ONLY");

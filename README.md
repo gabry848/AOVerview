@@ -69,6 +69,7 @@ Esempio di apertura:
   "requestId": "my-native-session-unique-id",
   "title": "Implementare la dashboard",
   "agentName": "Codex",
+  "detailLevel": "medium",
   "goals": [{ "id": "g1", "title": "Visualizzare progressi e risultati" }]
 }
 ```
@@ -85,7 +86,7 @@ Esempio di aggiornamento dopo l'apertura con revisione 0:
     {
       "op": "block", "id": "b1", "title": "Definire il modello dei dati",
       "status": "active", "goalId": "g1",
-      "details": [{ "id": "d1", "action": "Chiarite le informazioni da mostrare", "result": "Separati obiettivi, attività e proposte" }]
+      "details": [{ "id": "d1", "action": "Chiarite le informazioni da mostrare", "result": "Separati obiettivi, attività e proposte", "reference": "packages/core/src/contracts.ts" }]
     },
     { "op": "block", "id": "b2", "title": "Implementare la persistenza", "status": "proposed" }
   ]
@@ -94,6 +95,10 @@ Esempio di aggiornamento dopo l'apertura con revisione 0:
 
 ## Regole del reporting
 
+- La to-do list contiene pochi obiettivi ampi: più blocchi possono contribuire allo stesso obiettivo. I blocchi descrivono attività circoscritte; i passaggi interni contengono azione, esito e un riferimento verificabile, quando disponibile. Un blocco concluso non completa automaticamente il suo obiettivo.
+- `overview_open.detailLevel` è opzionale: `low` raggruppa lavori correlati, `medium` separa attività con un risultato proprio, `high` distingue anche sottoattività e verifiche significative. Predefinito: `medium`. Non impone un numero di blocchi né cambia gli obiettivi; la skill guida l'agent e i subagent ereditano il livello. Il livello è salvato nella sessione, restituito alla ripresa ed esposto dall'API.
+- Puoi indicarlo nel prompt, per esempio: «Usa AOVerview con dettaglio basso/medio/alto». È una scelta all'apertura della run; non riclassifica i blocchi delle sessioni precedenti. Per una prova: «Usa AOVerview con dettaglio medio. Mantieni gli obiettivi macro; descrivi il lavoro in blocchi e i passaggi come azione, esito e riferimento, seguendo la skill».
+- Nei dettagli, `reference` è testo breve (massimo 600 caratteri): percorso, comando di verifica o altro riferimento realmente osservato. Si aggiorna per ID; ometterlo conserva il valore e `null` lo cancella. Non inviare output grezzi e non inventare evidenze mancanti.
 - Un solo blocco `active` per agent; altri possono restare `blocked`. I nuovi blocchi sono `proposed` o `active`.
 - Le proposte sono modificabili; l'attivazione conferma l'avvio. Non possono contenere passaggi già svolti.
 - Il lavoro attivo può diventare `blocked`, `completed`, `failed` o `cancelled`. Quello bloccato può riprendere; gli stati terminali non riaprono.
@@ -151,7 +156,7 @@ npm run dev -w @aoverview/dashboard
 
 Esegui gli ultimi tre comandi in terminali distinti. Per i servizi compilati usa `start`, dopo `npm run build`.
 
-SQLite usa WAL, foreign key e timeout dei lock. MCP scrive; API ha una connessione in sola lettura. Le migrazioni sono versionate e idempotenti.
+SQLite usa WAL, foreign key e timeout dei lock. MCP scrive; API ha una connessione in sola lettura. Le migrazioni sono versionate e idempotenti. La migrazione alla versione 2 mantiene sessioni e ricevute esistenti, assegna `medium` alle sessioni precedenti e lascia i riferimenti non riportati a `null`.
 
 ## Verifica
 

@@ -37,14 +37,14 @@ try {
   report(root, [
     { op: "block", id: "b1", title: "Definire un linguaggio comune per il lavoro", status: "active", goalId: "g1",
       summary: "Un modello condiviso collega il piano dell’agent a ciò che l’utente vede.", details: [
-        { id: "d1", action: "Separati gli obiettivi dai blocchi di attività", result: "Un obiettivo può attraversare più fasi senza essere duplicato." },
+        { id: "d1", action: "Separati gli obiettivi dai blocchi di attività", result: "Un obiettivo può attraversare più fasi senza essere duplicato.", reference: "packages/core/src/contracts.ts" },
         { id: "d2", action: "Distinte le intenzioni dai risultati", result: "I prossimi passi restano provvisori fino all’avvio." },
       ] },
     { op: "block", id: "b1", status: "completed", outcome: "Ogni agent può descrivere il proprio lavoro senza sovrascrivere gli altri." },
     { op: "goal", id: "g1", status: "completed" }, { op: "goal", id: "g2", status: "active" },
     { op: "block", id: "b2", title: "Collegare MCP, API e dashboard", status: "active", goalId: "g2",
       summary: "Gli aggiornamenti attraversano i servizi separati e arrivano alla dashboard senza ricaricare la pagina.", details: [
-        { id: "d1", action: "Collegato il reporting al database condiviso", result: "Gli aggiornamenti vengono salvati insieme alla loro notifica." },
+        { id: "d1", action: "Collegato il reporting al database condiviso", result: "Gli aggiornamenti vengono salvati insieme alla loro notifica.", reference: "packages/core/src/store.ts · test/core.test.ts" },
         { id: "d2", action: "Verificato l’isolamento tra sessioni", result: "Più agent mantengono revisioni e blocchi indipendenti." },
       ] },
     { op: "block", id: "b3", title: "Provare la dashboard su mobile", status: "proposed", goalId: "g3", summary: "Controllare che obiettivi e attività restino leggibili su uno schermo stretto." },

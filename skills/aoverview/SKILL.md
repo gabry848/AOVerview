@@ -1,77 +1,88 @@
 ---
 name: aoverview
-description: Report meaningful agent progress to the local AOVerview MCP dashboard. Use when AOVerview reporting is requested or a parent provides a writer handle. Covers session goals, macro activity blocks, tentative next steps, resuming context, and subagent delegation.
+description: Report agent progress to AOVerview when requested or when a parent supplies a writer handle. Separate macro goals, configurable activity blocks, and factual action/result/reference steps. Covers tentative next steps, recovery and subagents.
 ---
 
 # AOVerview reporting
 
-Keep the user's dashboard useful with small, factual progress updates. Report objectives, actions, results, blockers, and intended next steps. Never include transcripts, raw tool output, secrets, or private reasoning. Continue the main task if reporting is temporarily unavailable.
+Give the user a concise account of what is happening and what it achieves. Report observable work, results, blockers and tentative next steps. Never include transcripts, raw tool output, secrets or private reasoning. Keep working if reporting is temporarily unavailable.
 
-## Start or resume
+## Three distinct levels
 
-- If the parent supplied a writer handle, use that identity. **Do not call `overview_open` as a subagent.**
-- Otherwise call `overview_open` once with a concrete session title, your agent name, a globally unique `requestId`, and normally 3–6 macro goals. Use a native session identifier or a unique random suffix for the opening request.
-- Save `handle`, `agentId`, `sessionId`, and `revision` in your working context and any handoff/compaction summary. Preserve child identities too; never replace a lost identity by opening another session.
-- After context loss, restart, or `REVISION_CONFLICT`, call `overview_resume` with your existing handle. Continue from its revision and short IDs.
-- Resume is compact: the current block's last three details, up to five blocked/proposed blocks, and twenty children with unfinished delegations first. Preserve older child identities; if unfinished-work checks fail, resolve the visible work and resume again.
-- Only the main agent manages the session goals. Subagents report their own blocks, optionally linked to the delegated goal.
+- **Goals (floating todo):** the user's broad desired outcomes. Keep a few, independent of reporting detail. A goal can span several blocks; do not copy implementation phases into the todo or create one goal per block. Completing a block does not automatically complete its goal. Change goals only when scope or their actual state changes.
+- **Blocks (canvas):** bounded activities advancing those outcomes, such as creating storage, connecting the editor or verifying imports. Choose their boundaries using the session's `detailLevel` below. Link related blocks to the same `goalId`; their titles describe the work, not repeat the goal.
+- **Details (inside a block):** concrete performed steps with `action`, `result` and `reference`. Record what was done, the observed outcome, and where it can be checked (file path, test command, issue/URL or other observed evidence). Keep each field brief. If an outcome is pending, say so; if no reference exists, omit it. Never fabricate evidence or claim a planned test passed.
 
-## Report at meaningful boundaries
+For a Markdown library, macro goals could be “Deliver a complete Markdown library”, “Verify persistence and main flows”, “Provide a runnable, documented demo”. The first goal can have storage, document API and editor blocks; a storage detail could describe adding a transaction, its observed behavior, and the relevant source path. The todo stays the same at every detail level.
 
-Use `overview_update` when starting a macro phase, obtaining an important result, discovering a blocker, changing direction, delegating, or finishing. Do not report every tool call or send a heartbeat. Skip updates that add no useful information.
+## Start, choose detail, resume
 
-Use short stable IDs such as `g1`, `b1`, and `d1`. Goal IDs belong to the session; block IDs belong to your agent; detail IDs belong to their block. Reuse IDs to update existing records. Every new request needs a distinct `requestId`; an exact retry must reuse the original request, including its revision and content.
+- With a parent-supplied handle, use that identity. **Subagents never call `overview_open`.** Resume if the inherited level or revision is missing.
+- Otherwise call `overview_open` once with title, agent name, globally unique `requestId`, broad goals and optional `detailLevel`. Follow the user's choice: basso/low → `low`, medio/medium → `medium`, alto/high → `high`. If unspecified, use **medium** without asking. This is reporting granularity for the session, not a visual filter.
+- Save `handle`, `agentId`, `sessionId`, `revision` and `detailLevel` in working context and handoff/compaction summaries. Preserve child identities. Never replace a lost identity by opening another session.
+- After context loss, restart or `REVISION_CONFLICT`, call `overview_resume` with your saved handle. Its level is authoritative; continue from the returned revision and short IDs. An old saved opening receipt may lack the level: resume to recover it.
+- Resume returns the active block's last three details, up to five blocked/proposed blocks and twenty children, unfinished delegations first. Preserve older child identities; if unfinished-work checks fail, resolve visible work and resume again.
+- Only the main agent manages goals. All descendants inherit the same session level and report their own blocks under the delegated goal.
 
-The input contains `handle`, `requestId`, `expectedRevision`, and `operations`. Every successful mutation, including subagent registration, returns your new revision. Operations are:
+| detailLevel | When to open a new block | Same library work might be grouped as |
+| --- | --- | --- |
+| `low` | A coherent group of related tasks producing a broader result. Keep meaningful steps inside it. | One “Build document storage and API” block. |
+| `medium` | A task with a distinct result, or a meaningful change in focus. | “Create document storage”, then “Expose document API”. |
+| `high` | A significant subactivity, investigation or verification with an independently useful result. | “Define document schema”, “Implement persistence”, “Implement document endpoints”, “Verify API contracts”. |
+
+These are grouping examples, **not required titles or block counts**. Never create a block for each read, command, tool call or tiny edit, even at high detail. Increase the number of useful boundaries, not the verbosity of each entry. The format of details and the macro goals remain the same across levels.
+
+## Report only meaningful changes
+
+Use `overview_update` when starting an activity, obtaining a useful result, discovering a blocker, changing direction, delegating or finishing. Start a block when work begins; add factual details as results become available. Every nontrivial performed block needs meaningful action/result/reference steps by closure, including work that failed. A proposal cancelled before work starts needs no performed details.
+
+Do not report every tool call, heartbeat or repeated summary. Group related steps, send only new or corrected fields, and reuse detail IDs when filling in a result or reference. Do not repeat the goal list or copy the same result into summary, detail and outcome; the outcome briefly states what the whole activity achieved. Low detail still includes useful performed steps.
+
+Use short stable IDs (`g1`, `b1`, `d1`). Goals belong to the session, blocks to your agent, details to their block. Every new request has a distinct `requestId`; an exact retry reuses all original arguments, including revision and content.
+
+`overview_update` takes `handle`, `requestId`, `expectedRevision`, `operations`. Each accepted mutation, including registration, returns your new revision:
 
 - `goal`: `id`, optional `title`, `description`, `status`. New goals need a title. States: `pending`, `active`, `blocked`, `completed`, `cancelled`.
-- `block`: `id`, optional `title`, `summary`, `goalId`, `status`, `outcome`, `concern`, `details`. New blocks need a title. Details contain `id`, `action`, optional `result`.
-- `delegation`: `childAgentId`, `status: "cancelled"` for an unstarted reservation; or `status: "integrated"`, `blockId`, optional `note` when the parent actually incorporates a completed contribution.
+- `block`: `id`, optional `title`, `summary`, `goalId`, `status`, `outcome`, `concern`, `details`. New blocks need a title. Each detail has `id`, `action`, optional `result` and `reference`.
+- `delegation`: `childAgentId`, `status: "cancelled"` for an unstarted reservation; or `status: "integrated"`, `blockId`, optional `note` after actually incorporating a completed contribution.
 - `finish`: `status: "completed" | "failed" | "cancelled"`.
 
-Omitted fields remain unchanged. Use `null` to clear optional description, summary, goal association, result, outcome, or concern. Sending details adds or corrects those IDs; it does not replace the full detail list.
-
-Keep titles concrete and brief. Summaries should normally be one or two sentences; add 1–3 meaningful details per update. Each detail says what was done and, when known, its result. Prefer improving the current block to creating another small block.
+Omitted fields stay unchanged; `null` clears optional text or goal association, including a detail's result/reference. Details are upserted by ID, never replace the full list. Keep titles concrete and brief; include a summary only if it adds context.
 
 ## Blocks and tentative next steps
 
-- Keep at most one `active` block per agent. Other work can remain `blocked`.
-- A new block is `proposed` or `active`. Proposed blocks contain intentions, not completed actions.
-- Normally maintain only one or two proposed next steps. Change their titles or summaries when the plan changes; cancel obsolete proposals.
-- Activate a proposed block when starting it. That transition is its confirmation.
-- Active work can become `blocked`, `completed`, `failed`, or `cancelled`. Blocked work can resume as `active`. Terminal block states do not reopen.
-- Bundle the current block's result, its completion, the next block's activation, and goal changes in one request.
+- Keep at most one `active` block per agent; other work may remain `blocked`.
+- New blocks are `proposed` or `active`. Proposals contain intentions, never performed details.
+- Normally keep only one or two upcoming proposals. Confirm by activating when starting; revise or cancel them if the plan changes. A proposed check must not appear to have already passed.
+- Active work may become `blocked`, `completed`, `failed` or `cancelled`. Blocked work can resume as `active`; terminal states cannot reopen. When a failed approach requires new work, add a fresh block under the same macro goal.
+- Batch the current result and closure, next activation and any genuine goal-state changes. Do not complete a broad goal just because one associated block finished.
 
-Example phase transition:
+Example at medium detail, **after the transaction test has actually passed**: both blocks advance the same broad goal; the goal is still unfinished.
 
 ```json
 {
   "handle": "YOUR_HANDLE",
-  "requestId": "phase-2",
+  "requestId": "storage-verified",
   "expectedRevision": 3,
   "operations": [
-    {"op":"block","id":"b1","status":"completed","outcome":"Defined a consistent data model."},
-    {"op":"block","id":"b2","title":"Implement persistence","status":"active","goalId":"g1"},
-    {"op":"block","id":"b3","title":"Verify simultaneous agents","status":"proposed"}
+    {"op":"block","id":"b1","status":"completed","outcome":"Document storage is ready for API integration.","details":[{"id":"d2","action":"Tested rollback of an invalid document write.","result":"The invalid batch leaves existing documents unchanged.","reference":"npm test -- storage.test.ts"}]},
+    {"op":"block","id":"b2","title":"Expose document API","status":"active","goalId":"g1"},
+    {"op":"block","id":"b3","title":"Connect Markdown editor","status":"proposed","goalId":"g1"}
   ]
 }
 ```
 
 ## Subagents
 
-1. From your active block, call `overview_register_subagent` with your handle, revision, a unique request ID, `name`, `mandate`, `blockId`, and optional `goalId`.
-2. Update your saved revision from the response. Pass the returned child handle, identity, initial revision, task, and this skill to the child **when spawning it**.
-3. The child uses its handle to report. Its first accepted update confirms it is running. Nested subagents follow the same flow.
-4. If spawning fails, cancel the still-reserved delegation using `overview_update`.
-5. Child completion does not imply integration. Once you use its contribution, explicitly register `delegation` integration into your own started block.
+1. Before spawning, call `overview_register_subagent` from your active block with handle, revision, unique request ID, `name`, `mandate`, `blockId`, optional `goalId`.
+2. Save the new parent revision. Pass the returned child handle, identity, revision, **inherited `detailLevel`**, task and this skill when spawning. The child resumes if needed and uses the same grouping rules; it does not create another macro todo.
+3. Its first accepted update confirms it is running. Nested delegates follow the same flow. If spawning fails, cancel the still-reserved delegation.
+4. Completion does not imply integration: record `delegation` integration into your started block only when using the completed contribution. Your details say what you checked/incorporated and its effect; do not copy the child's timeline or rewrite its blocks.
 
-Do not rewrite a child's blocks or copy all its progress into your timeline. Your own block should describe how its contribution affected your work.
+## Finish and recovery
 
-## Finish and failures
-
-- Before finishing successfully, close active/blocked work, wait for descendants to finish, and have the main agent complete or cancel remaining goals. Integrate relevant contributions before finishing the parent.
-- Add a final outcome and `finish` in the same update. Remaining tentative proposals are cancelled by the server.
-- A failed/cancelled finish records that explicit outcome; it does not infer that descendants stopped.
-- For transient reporting errors, retry the exact request once. If still unavailable, keep working and reconcile important progress on recovery. Never loop on dashboard reporting errors.
-- On validation errors, correct the request. On a revision conflict, resume first; rebuild the intended update with a new request ID and current revision.
-- Treat reported `completed` as an observed result. Describe unverified expectations as proposals, not achievements.
+- Before closing a performed block, check its meaningful steps contain an action, honest outcome and available reference. If the outcome remains unverified, record that limit rather than imply success.
+- Before successful finish, close active/blocked work, wait for descendants, integrate used contributions and have the main agent complete/cancel goals according to their broad acceptance criteria.
+- Batch the final activity outcome and `finish`; the server cancels leftover proposals. Explicit failed/cancelled finish does not infer descendants stopped.
+- On transient reporting errors, retry the identical request once, then continue the main task and reconcile meaningful progress on recovery. Never loop on reporting errors.
+- Correct validation errors. On revision conflicts, resume and rebuild the intended update with a new request ID and current revision.

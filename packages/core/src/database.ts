@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-export const schemaVersion = 1;
+export const schemaVersion = 2;
 
 export function connectDatabase(path: string, readOnly = false): DatabaseSync {
   const db = new DatabaseSync(path, { readOnly, timeout: 5000, enableForeignKeyConstraints: true });
@@ -66,6 +66,14 @@ export function migrateDatabase(path: string): void {
           sessionId TEXT NOT NULL REFERENCES sessions(id), agentId TEXT NOT NULL REFERENCES agents(id)
         ) STRICT;
         PRAGMA user_version = 1;
+      `);
+    }
+    if (version < 2) {
+      db.exec(`
+        ALTER TABLE sessions ADD COLUMN detailLevel TEXT NOT NULL DEFAULT 'medium'
+          CHECK(detailLevel IN ('low','medium','high'));
+        ALTER TABLE details ADD COLUMN reference TEXT;
+        PRAGMA user_version = 2;
       `);
     }
     db.exec("COMMIT;");

@@ -16,14 +16,14 @@ function respond(operation: () => object) {
 export function createMcpServer(store: OverviewStore) {
   const server = new MCPServer({
     name: "aoverview", version: "0.1.0", basePath: "/mcp",
-    description: "Report agent goals, macro activities, outcomes and delegations to a local dashboard.",
-    instructions: "Report meaningful macro progress, not individual tool calls. Batch related changes. Preserve your writer handle and revision. Register each subagent before spawning it and pass its handle plus the AOVerview skill. Proposed blocks are tentative. Resume after context loss or revision conflicts.",
+    description: "Report macro goals, activity blocks, factual steps and delegations to a local dashboard.",
+    instructions: "Keep three levels distinct: macro goals, bounded activity blocks, and performed steps with action, result and an observed reference. Several blocks can advance one goal; completing a block does not automatically complete its goal. Follow the session detailLevel: low groups related work, medium separates tasks, high separates meaningful subactivities; never one block per tool call or a fixed block count. Include meaningful steps before closing performed work. Batch only changes. Preserve handle and revision. Register subagents before spawning; pass their handle, inherited detailLevel and AOVerview skill. Proposals are tentative. Resume after context loss or revision conflicts.",
     logging: { enabled: false },
     allowedOrigins: [],
     skills: false,
   });
   server.tool({
-    name: "overview_open", description: "Open an independent session. Use a globally unique requestId; reuse it only to retry this exact request.",
+    name: "overview_open", description: "Open a session with macro goals and optional detailLevel low/medium/high (default medium). This guides agent reporting, not a canvas filter. Use a globally unique requestId; reuse it only for an exact retry.",
     inputSchema: openSchema,
   }, async input => respond(() => store.open(input)));
   server.tool({
@@ -31,7 +31,7 @@ export function createMcpServer(store: OverviewStore) {
     inputSchema: updateSchema,
   }, async input => respond(() => store.update(input)));
   server.tool({
-    name: "overview_register_subagent", description: "Reserve a child from your active delegation block before spawning it. Pass the returned child handle and reporting skill to the subagent. Use the returned parent revision for your next update.",
+    name: "overview_register_subagent", description: "Reserve a child from your active block before spawning it. Pass the returned child handle, inherited detailLevel and reporting skill to the subagent. Use the returned parent revision for your next update.",
     inputSchema: registerSchema,
   }, async input => respond(() => store.registerSubagent(input)));
   server.tool({

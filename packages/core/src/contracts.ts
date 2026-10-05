@@ -7,6 +7,7 @@ const text = z.string().trim().min(1).max(1600);
 export const blockStatusSchema = z.enum(["proposed", "active", "blocked", "completed", "failed", "cancelled"]);
 export const agentStatusSchema = z.enum(["reserved", "running", "completed", "failed", "cancelled"]);
 export const goalStatusSchema = z.enum(["pending", "active", "blocked", "completed", "cancelled"]);
+export const detailLevelSchema = z.enum(["low", "medium", "high"]);
 
 export const goalMutationSchema = z.strictObject({
   op: z.literal("goal"), id: keySchema,
@@ -15,6 +16,8 @@ export const goalMutationSchema = z.strictObject({
 });
 export const detailMutationSchema = z.strictObject({
   id: keySchema, action: text, result: text.nullable().optional(),
+  reference: z.string().trim().min(1).max(600).nullable().optional()
+    .describe("Observed file path, test command or evidence identifier; omit if unavailable."),
 });
 export const blockMutationSchema = z.strictObject({
   op: z.literal("block"), id: keySchema,
@@ -36,6 +39,7 @@ export const mutationSchema = z.discriminatedUnion("op", [
 ]);
 export const openSchema = z.strictObject({
   requestId, title, agentName: title,
+  detailLevel: detailLevelSchema.optional().describe("Block granularity: low groups related work, medium separates tasks, high separates meaningful subactivities. Default medium; goals stay macro."),
   goals: z.array(z.strictObject({ id: keySchema, title, description: text.optional() })).max(12).optional(),
 });
 export const updateSchema = z.strictObject({
@@ -57,9 +61,10 @@ export type Mutation = z.infer<typeof mutationSchema>;
 export type BlockStatus = z.infer<typeof blockStatusSchema>;
 export type AgentStatus = z.infer<typeof agentStatusSchema>;
 export type GoalStatus = z.infer<typeof goalStatusSchema>;
+export type DetailLevel = z.infer<typeof detailLevelSchema>;
 
 export interface Session {
-  id: string; title: string; rootAgentId: string; createdAt: number; updatedAt: number;
+  id: string; title: string; rootAgentId: string; detailLevel: DetailLevel; createdAt: number; updatedAt: number;
 }
 export interface Agent {
   id: string; sessionId: string; parentAgentId: string | null; parentBlockId: string | null;
@@ -79,6 +84,7 @@ export interface Block {
 }
 export interface Detail {
   id: string; agentId: string; blockId: string; action: string; result: string | null;
+  reference: string | null;
   position: number; createdAt: number; updatedAt: number;
 }
 export interface BlockDetail extends Block { details: Detail[] }
@@ -90,15 +96,17 @@ export interface SessionSummary extends Session {
 export interface SessionOverview { session: Session; goals: Goal[]; agents: AgentOverview[] }
 export interface Page<T> { items: T[]; nextCursor: string | null }
 export interface WriteResult { agentId: string; revision: number }
-export interface OpenResult extends WriteResult { sessionId: string; handle: string }
+// Replayed v1 receipts retain their original payload; resume recovers the level.
+export interface OpenResult extends WriteResult { sessionId: string; handle: string; detailLevel?: DetailLevel }
 export interface RegisterResult extends WriteResult {
-  child: { agentId: string; sessionId: string; handle: string; revision: number };
+  child: { agentId: string; sessionId: string; handle: string; revision: number; detailLevel?: DetailLevel };
 }
 export interface ResumeResult {
   agentId: string; sessionId: string; revision: number; status: AgentStatus;
+  detailLevel: DetailLevel;
   parentAgentId: string | null; goalId: string | null;
   mandate: string | null; goals: Pick<Goal, "id" | "title" | "status">[];
-  active: (BlockContext & { details: Pick<Detail, "id" | "action" | "result">[] }) | null;
+  active: (BlockContext & { details: Pick<Detail, "id" | "action" | "result" | "reference">[] }) | null;
   blocked: BlockContext[]; lastCompleted: BlockContext | null;
   proposed: BlockContext[];
   children: Pick<Agent, "id" | "name" | "status" | "integratedAt">[];

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import type { OpenResult, RegisterResult, WriteResult } from "@aoverview/core";
+import type { OpenResult, RegisterResult, ResumeResult, WriteResult } from "@aoverview/core";
 import { createApiApp } from "../apps/api/src/app.js";
 import { createMcpServer } from "../apps/mcp/src/server.js";
 import { fixture, open, update } from "./helpers.js";
@@ -13,15 +13,18 @@ test("API provides paginated read-only snapshots and never exposes writer handle
   const api = createApiApp(reader); t.after(api.close);
   const identity = open(f.store);
   update(f.store, identity, [{ op: "block", id: "work", title: "Current activity", status: "active",
-    details: [{ id: "d1", action: "Defined the contract", result: "Consistent fields" }] }]);
+    details: [{ id: "d1", action: "Defined the contract", result: "Consistent fields", reference: "src/contracts.ts" }] }]);
   const request = (url: string, init?: RequestInit) => api.app.request(url, init);
   assert.equal((await request("/health")).status, 200);
   const list = await (await request("/api/v1/sessions?limit=1")).json();
   assert.equal(list.items[0].currentBlock.title, "Current activity");
+  assert.equal(list.items[0].detailLevel, "medium");
   const snapshot = await (await request(`/api/v1/sessions/${identity.sessionId}`)).text();
   assert(!snapshot.includes(identity.handle)); assert(!snapshot.includes('"handle"'));
+  assert.equal(JSON.parse(snapshot).session.detailLevel, "medium");
   const detail = await (await request(`/api/v1/agents/${identity.agentId}/blocks/work`)).json();
   assert.equal(detail.details[0].result, "Consistent fields");
+  assert.equal(detail.details[0].reference, "src/contracts.ts");
   assert.equal((await request("/api/v1/sessions?limit=1000")).status, 400);
   assert.equal((await request("/api/v1/sessions?cursor=invalid")).status, 400);
   assert.equal((await request(`/api/v1/agents/${identity.agentId}/blocks?view=unknown`)).status, 400);
@@ -94,24 +97,29 @@ test("real MCP clients open two sessions, delegate, report progress, integrate a
     assert(!result.isError, JSON.stringify(result.content));
     return result.structuredContent as T;
   }
-  const root = await call<OpenResult>("overview_open", { requestId: randomUUID(), title: "First session", agentName: "Main", goals: [{ id: "g1", title: "Working dashboard" }] });
+  const root = await call<OpenResult>("overview_open", { requestId: randomUUID(), title: "First session", agentName: "Main", detailLevel: "high", goals: [{ id: "g1", title: "Working dashboard" }] });
   const other = await call<OpenResult>("overview_open", { requestId: randomUUID(), title: "Second session", agentName: "Other" });
   assert.notEqual(root.sessionId, other.sessionId);
+  assert.equal(root.detailLevel, "high"); assert.equal(other.detailLevel, "medium");
   const report = { handle: root.handle, requestId: "start", expectedRevision: 0,
     operations: [{ op: "block", id: "work", title: "Coordinate the implementation", status: "active", goalId: "g1" }] };
   const ack = await call<WriteResult>("overview_update", report);
   assert.deepEqual(await call("overview_update", report), ack);
   const registered = await call<RegisterResult>("overview_register_subagent", { handle: root.handle, requestId: "delegate", expectedRevision: ack.revision,
     blockId: "work", name: "Reviewer", mandate: "Verify the implementation" });
+  assert.equal(registered.child.detailLevel, "high");
+  assert.equal((await call<ResumeResult>("overview_resume", { handle: registered.child.handle })).detailLevel, "high");
   await call("overview_update", { handle: registered.child.handle, requestId: "result", expectedRevision: 0,
-    operations: [{ op: "block", id: "work", title: "Verify the implementation", status: "active", details: [{ id: "d1", action: "Checked the reporting flow", result: "Passed" }] },
+    operations: [{ op: "block", id: "work", title: "Verify the implementation", status: "active", details: [{ id: "d1", action: "Checked the reporting flow", result: "Passed", reference: "npm test" }] },
       { op: "block", id: "work", status: "completed", outcome: "Verified" }, { op: "finish", status: "completed" }] });
+  assert.equal(f.store.getBlock(registered.child.agentId, "work").details[0]?.reference, "npm test");
   await call("overview_update", { handle: root.handle, requestId: "integrate", expectedRevision: registered.revision,
     operations: [{ op: "delegation", childAgentId: registered.child.agentId, status: "integrated", blockId: "work" },
       { op: "block", id: "work", status: "completed", outcome: "Integrated the verified contribution" },
       { op: "goal", id: "g1", status: "completed" }, { op: "finish", status: "completed" }] });
-  const resumed = await call<{ status: string; revision: number }>("overview_resume", { handle: root.handle });
+  const resumed = await call<ResumeResult>("overview_resume", { handle: root.handle });
   assert.equal(resumed.status, "completed"); assert.equal(resumed.revision, 3);
+  assert.equal(resumed.detailLevel, "high");
   const conflict = await client.callTool({ name: "overview_update", arguments: { handle: other.handle, requestId: "stale", expectedRevision: 99,
     operations: [{ op: "block", id: "bad", title: "Must not exist", status: "active" }] } });
   assert.equal(conflict.isError, true);

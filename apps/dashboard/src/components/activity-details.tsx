@@ -51,8 +51,14 @@ export function BlockDetails({ block, overview, version, now, chooseAgent, highl
             {detail.data.details.length === 0 ? <p className="text-sm text-muted-foreground">Non sono ancora stati aggiunti passaggi.</p>
               : <ol className="space-y-5">{detail.data.details.map((item, index) => <li key={item.id} className="flex gap-3">
                 <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground" aria-hidden="true">{index + 1}</span>
-                <div className="min-w-0"><p className="wrap-anywhere text-sm leading-6 whitespace-pre-line">{item.action}</p>
-                  {item.result && <p className="mt-1 wrap-anywhere text-sm leading-6 whitespace-pre-line text-muted-foreground">{item.result}</p>}</div>
+                <div className="min-w-0 space-y-2">
+                  <div><span className="text-[10px] font-medium text-muted-foreground">Azione</span>
+                    <p className="wrap-anywhere text-sm leading-6 whitespace-pre-line">{item.action}</p></div>
+                  {item.result && <div><span className="text-[10px] font-medium text-muted-foreground">Esito</span>
+                    <p className="wrap-anywhere text-sm leading-6 whitespace-pre-line">{item.result}</p></div>}
+                  {item.reference && <div><span className="text-[10px] font-medium text-muted-foreground">Riferimento</span>
+                    <p className="mt-1 rounded-md bg-muted/50 px-2 py-1.5 font-mono text-xs leading-5 whitespace-pre-line wrap-anywhere">{item.reference}</p></div>}
+                </div>
               </li>)}</ol>}
           </div>}
         </CollapsibleContent>
