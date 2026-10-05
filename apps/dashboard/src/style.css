@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import '@xyflow/react/dist/style.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -108,6 +109,29 @@ pre {
   font-family: ui-monospace, monospace;
 }
 
+.activity-canvas .react-flow {
+  --xy-background-color: var(--background);
+  --xy-edge-stroke: #71717a;
+  --xy-handle-background-color: var(--card);
+  --xy-handle-border-color: #52525b;
+}
+.activity-canvas .react-flow__handle {
+  width: 6px;
+  height: 6px;
+  pointer-events: none;
+}
+.activity-canvas .react-flow__node button:focus-visible [data-slot='card'] {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+.activity-canvas .react-flow__attribution {
+  background: transparent;
+}
+.activity-canvas .react-flow__attribution a {
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+
 /* Neutral depth and spacing, following shadcn's dashboard-01 inset layout. */
 .dark {
   --card: oklch(0.195 0 0);
@@ -195,3 +219,13 @@ select,
   }
 }
 
+[data-slot='sidebar-inset'].canvas-workspace {
+  height: 100dvh;
+  min-height: 100dvh;
+  margin: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: none;
+}

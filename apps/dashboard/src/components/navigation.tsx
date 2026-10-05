@@ -59,12 +59,12 @@ export function Navigation({ sessions, sessionId, overview, agentId, navigate, h
           choose={id => choose(overview.session.id, id)}/></SidebarGroupContent>
       </SidebarGroup>}
     </SidebarContent>
-    <SidebarFooter className="p-4 group-data-[collapsible=icon]:hidden">
+    {!sessionId && <SidebarFooter className="p-4 group-data-[collapsible=icon]:hidden">
       <div className="rounded-xl border bg-gradient-to-br from-muted/40 to-transparent p-4">
         <p className="flex items-center gap-2 text-xs font-medium"><Bot className="size-3.5" aria-hidden="true"/>Il lavoro prende forma.</p>
         <p className="mt-2 text-xs leading-5 text-muted-foreground">Gli agent comunicano attività e risultati. La vista si aggiorna in tempo reale.</p>
       </div>
-    </SidebarFooter>
+    </SidebarFooter>}
   </>;
 }
 

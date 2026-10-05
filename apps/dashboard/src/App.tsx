@@ -1,18 +1,17 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useState, type CSSProperties } from "react";
 import { Activity, ArrowRight, ArrowUpRight, Clock3, GitBranch, Layers3, LayoutDashboard, Target } from "lucide-react";
 import type { SessionOverview, SessionSummary } from "@aoverview/core/contracts";
 import { useLiveUpdates, usePages, useResource } from "./data.js";
-import { Timeline } from "./components/activity";
-import { Goals } from "./components/goals";
 import { Navigation } from "./components/navigation";
-import { AgentAvatar, ErrorNotice, LoadingCards, StatusBadge, UpdatedTime, ago } from "./components/overview-ui";
+import { AgentAvatar, ErrorNotice, LoadingCards, StatusBadge, UpdatedTime } from "./components/overview-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Sidebar, SidebarHeader, SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+
+const ActivityCanvas = lazy(() => import("./components/activity").then(module => ({ default: module.ActivityCanvas })));
 
 function selectionFromUrl() {
   const query = new URLSearchParams(window.location.search);
@@ -64,20 +63,21 @@ export function App() {
       <Navigation sessions={list} sessionId={selection.sessionId} overview={overview} agentId={agent?.id} navigate={navigate}
         hasMore={Boolean(sessions.data?.nextCursor)} loading={sessions.loading} loadMore={() => setSessionPages(old => old + 1)}/>
     </Sidebar>
-    <SidebarInset>
-      <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b px-4 sm:px-6">
+    <SidebarInset className={cn(selection.sessionId && "canvas-workspace")}>
+      {!selection.sessionId && <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b px-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <SidebarTrigger aria-label="Apri navigazione" className="size-10 shrink-0 md:hidden"/>
           <LayoutDashboard className="hidden size-4 text-muted-foreground sm:block" aria-hidden="true"/>
-          <h2 className="truncate text-sm font-medium">{selection.sessionId ? "Attività della sessione" : "Vista d’insieme"}</h2>
+          <h2 className="truncate text-sm font-medium">Vista d’insieme</h2>
         </div>
         <div role="status" className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
           <span className={cn("size-1.5 rounded-full", live.connected ? "bg-emerald-400 shadow-[0_0_8px_#34d39940]" : "bg-amber-400")} aria-hidden="true"/>
           {live.connected ? "In diretta" : "Riconnessione…"}
         </div>
-      </header>
-      <div id="main" tabIndex={-1} className="mx-auto w-full max-w-[1440px] flex-1 space-y-6 p-4 outline-none sm:p-6">
-        {error && <ErrorNotice message={error} retry={retryData}/>}
+      </header>}
+      <div id="main" tabIndex={-1} className={cn("outline-none", selection.sessionId
+        ? "relative min-h-0 flex-1" : "mx-auto w-full max-w-[1440px] flex-1 space-y-6 p-4 sm:p-6")}>
+        {error && <div className={cn(selection.sessionId && "absolute top-28 left-4 z-40 max-w-md right-4 sm:left-6")}><ErrorNotice message={error} retry={retryData}/></div>}
         {!selection.sessionId ? <>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div><p className="mb-2 text-xs font-medium text-muted-foreground">WORKSPACE</p>
@@ -96,41 +96,34 @@ export function App() {
           {sessions.data?.nextCursor && <div className="flex justify-center"><Button variant="outline" disabled={sessions.loading}
             onClick={() => setSessionPages(old => old + 1)}>{sessions.loading ? "Caricamento…" : "Mostra altre sessioni"}</Button></div>}
         </> : <>
-          {selected.loading && !overview && <LoadingCards count={2} label="Caricamento della sessione…"/>}
-          {!overview && selected.error && <Card><CardContent className="py-8 text-center">
+          {selected.loading && !overview && <div className="absolute inset-0 grid place-items-center p-6"><div className="w-full max-w-sm"><LoadingCards count={1} label="Caricamento della sessione…"/></div></div>}
+          {!overview && selected.error && <Card className="absolute top-1/2 left-1/2 w-[calc(100%-2rem)] max-w-md -translate-1/2"><CardContent className="py-8 text-center">
             <h1 className="text-xl font-semibold">Sessione non disponibile</h1>
             <p className="mt-3 text-sm text-muted-foreground">Verifica il collegamento oppure torna alle sessioni.</p>
             <Button variant="outline" className="mt-5" onClick={() => navigate(null)}>Tutte le sessioni<ArrowRight aria-hidden="true"/></Button>
           </CardContent></Card>}
           {overview && agent && <>
-            <div className="space-y-4">
-              <div><p className="mb-2 text-xs font-medium text-muted-foreground">{agent.parentAgentId ? "CONTRIBUTO DEL SUBAGENT" : "PERCORSO DELLA SESSIONE"}</p>
-                <h1 className="wrap-anywhere text-2xl leading-tight font-semibold tracking-tight sm:text-3xl">{overview.session.title}</h1></div>
-              <div className="flex flex-wrap items-center gap-2.5 text-sm"><AgentAvatar name={agent.name} small/><span className="min-w-0 max-w-full wrap-anywhere">{agent.name}</span>
-                <StatusBadge status={agent.status}/><span className="ml-auto text-xs text-muted-foreground">Aggiornato {ago(agent.updatedAt, now)}</span></div>
-            </div>
-            <Separator/>
-            <div className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_290px]">
-              <div className="min-w-0 space-y-6">
-                {agent.parentAgentId && <Card className="gap-3 bg-muted/30 py-4"><CardContent className="flex gap-3 px-4">
-                  <GitBranch className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true"/>
-                  <div className="min-w-0"><h2 className="text-xs font-medium text-muted-foreground">Incarico</h2>
-                    <p className="mt-2 wrap-anywhere text-sm leading-6">{agent.mandate}</p>
-                    <p className="mt-2 text-xs text-muted-foreground">{agent.integratedAt ? "✓ Contributo integrato dal genitore"
-                      : agent.status === "completed" ? "Contributo concluso · integrazione non ancora registrata" : "Attività delegata"}</p>
+            <header className="absolute top-3 left-3 z-20 max-w-[calc(100%-4.5rem)] rounded-xl border bg-background/95 px-3 py-3 shadow-lg backdrop-blur sm:top-5 sm:left-5 sm:px-4 md:max-w-[calc(100%-20rem)]">
+              <div className="flex items-start gap-2">
+                <SidebarTrigger aria-label="Apri navigazione" className="-ml-1 size-8 shrink-0 md:hidden"/>
+                <div className="min-w-0"><h1 className="wrap-anywhere text-sm leading-5 font-semibold tracking-tight sm:text-base">{overview.session.title}</h1>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><AgentAvatar name={agent.name} small/>
+                    <span className="min-w-0 wrap-anywhere">{agent.name}</span><StatusBadge status={agent.status}/>
+                    {!live.connected && <span role="status" className="text-amber-400">Riconnessione…</span>}
                   </div>
-                </CardContent></Card>}
-                <Timeline key={agent.id} agent={agent} overview={overview} version={sessionVersion} now={now}
-                  retry={retryData} chooseAgent={id => navigate(overview.session.id, id)}/>
+                </div>
               </div>
-              <aside aria-label="Obiettivi della sessione" className="min-w-0 xl:sticky xl:top-6"><Goals goals={overview.goals}/></aside>
-            </div>
+            </header>
+            <Suspense fallback={<div className="absolute inset-0 grid place-items-center p-6"><div className="w-full max-w-sm"><LoadingCards label="Caricamento del canvas…"/></div></div>}>
+              <ActivityCanvas key={agent.id} agent={agent} overview={overview} version={sessionVersion} now={now}
+                retry={retryData} chooseAgent={id => navigate(overview.session.id, id)}/>
+            </Suspense>
           </>}
         </>}
       </div>
-      <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t px-4 py-4 text-xs text-muted-foreground sm:px-6">
+      {!selection.sessionId && <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t px-4 py-4 text-xs text-muted-foreground sm:px-6">
         <span>AOVerview</span><span>Un aggiornamento alla volta.</span>
-      </footer>
+      </footer>}
     </SidebarInset>
   </SidebarProvider>;
 }

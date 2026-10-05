@@ -35,6 +35,8 @@ La dashboard compilata viene servita dal proprio processo Node, con lo stesso in
 
 La UI usa **shadcn/ui New York**, Radix, Tailwind CSS 4 e Lucide, con tema scuro e sidebar inset. I componenti sono in `apps/dashboard/src/components/ui`; la configurazione per aggiungerne altri è in `apps/dashboard/components.json`.
 
+Le attività sono visualizzate su un canvas React Flow a schermo intero, accanto alla sidebar, con pan, zoom e dettagli flottanti al clic. Le frecce continue indicano l’ordine di avvio, quelle tratteggiate i possibili prossimi passi. I subagent si diramano dal blocco che li ha delegati; una freccia verde indica l’integrazione effettivamente registrata. La todo list fluttua sul canvas e può essere nascosta; su mobile si apre dal pulsante Obiettivi. Gli aggiornamenti live conservano il punto di vista scelto; i controlli permettono di centrare l’attività recente o mostrare tutti i blocchi caricati. Trascina lo sfondo o scorri con il trackpad per spostarti; usa i pulsanti, il gesto pinch o Cmd/Ctrl con la rotella per lo zoom.
+
 ## Collegare un agent
 
 Nei client MCP con configurazione HTTP tramite `url`:

@@ -1,8 +1,7 @@
 import { Circle, CircleCheck, CircleDot, CircleX, OctagonAlert, Target } from "lucide-react";
 import type { Goal } from "@aoverview/core/contracts";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { statusLabels } from "./overview-ui";
 import { cn } from "@/lib/utils";
 
@@ -11,7 +10,6 @@ export function Goals({ goals }: { goals: Goal[] }) {
   return <Card className="gap-5 py-5">
     <CardHeader className="gap-2 px-5">
       <CardTitle><h2 className="flex items-center gap-2"><Target className="size-4 text-muted-foreground" aria-hidden="true"/>Obiettivi</h2></CardTitle>
-      <CardDescription className="text-xs leading-5">La direzione del lavoro, per tutta la sessione.</CardDescription>
     </CardHeader>
     <CardContent className="px-5">
       {goals.length > 0 && <div className="mb-6 space-y-3">
@@ -36,8 +34,6 @@ export function Goals({ goals }: { goals: Goal[] }) {
         })}
       </ol>
       {goals.length === 0 && <p className="text-sm leading-6 text-muted-foreground">L’agent non ha ancora definito gli obiettivi.</p>}
-      <Separator className="my-5"/>
-      <p className="text-xs leading-5 text-muted-foreground">Un obiettivo può attraversare più blocchi. Il completamento viene confermato dall’agent principale.</p>
     </CardContent>
   </Card>;
 }
