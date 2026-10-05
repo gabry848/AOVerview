@@ -33,6 +33,8 @@ npm start
 
 La dashboard compilata viene servita dal proprio processo Node, con lo stesso inoltro `/api` usato da Vite in sviluppo.
 
+La UI usa **shadcn/ui New York**, Radix, Tailwind CSS 4 e Lucide, con tema scuro e sidebar inset. I componenti sono in `apps/dashboard/src/components/ui`; la configurazione per aggiungerne altri è in `apps/dashboard/components.json`.
+
 ## Collegare un agent
 
 Nei client MCP con configurazione HTTP tramite `url`:
