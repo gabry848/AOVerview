@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import type { ChangeEvent, Page } from "@aoverview/core/contracts";
+import type { ChangeEvent, Page, Session } from "@aoverview/core/contracts";
+
+export async function setSessionArchived(sessionId: string, archived: boolean): Promise<Session> {
+  const response = await fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/archive`, {
+    method: archived ? "POST" : "DELETE", headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(response.status === 404 ? "Questa sessione non è disponibile."
+    : archived ? "Impossibile archiviare la sessione. Riprova." : "Impossibile ripristinare la sessione. Riprova.");
+  return response.json() as Promise<Session>;
+}
 
 export async function readApi<T>(url: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(url, { signal, headers: { Accept: "application/json" } });
@@ -48,7 +57,10 @@ export function usePages<T>(url: string | null, version: string | number, pages:
     });
     return () => controller.abort();
   }, [url, version, pages]);
-  return resource.url === url ? resource : { url, data: null, error: null, loading: url !== null };
+  const visible = resource.url === url ? resource : { url, data: null, error: null, loading: url !== null };
+  return { ...visible, updateData: (update: (data: Page<T>) => Page<T>) => {
+    setResource(old => old.url === url && old.data ? { ...old, data: update(old.data) } : old);
+  } };
 }
 
 export function useLiveUpdates() {
