@@ -3,7 +3,7 @@ import { OverviewStore } from "@aoverview/core";
 import { configuredPort, databasePath } from "@aoverview/core/config";
 import { createApiApp } from "./app.js";
 
-const store = new OverviewStore(databasePath, true);
+const store = new OverviewStore(databasePath);
 const api = createApiApp(store);
 const server = serve({ fetch: api.app.fetch, hostname: "127.0.0.1", port: configuredPort("AOVERVIEW_API_PORT", 3002) },
   info => console.log(`API: http://localhost:${info.port}`));

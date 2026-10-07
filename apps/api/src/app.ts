@@ -66,6 +66,15 @@ export function createApiApp(store: OverviewStore, pollInterval = 500) {
     return c.json(store.listSessions(limit, offset));
   });
   app.get("/api/v1/sessions/:id", c => c.json(store.getSession(id(c.req.param("id")))));
+  app.use("/api/v1/sessions/:id/archive", async (c, next) => {
+    const origin = c.req.header("Origin");
+    if ((origin !== undefined && !isLocalUrl(origin)) || c.req.header("Sec-Fetch-Site") === "cross-site") {
+      return c.json({ error: "LOCAL_ONLY", message: "Local dashboard only." }, 403);
+    }
+    await next();
+  });
+  app.post("/api/v1/sessions/:id/archive", c => c.json(store.setSessionArchived(id(c.req.param("id")), true)));
+  app.delete("/api/v1/sessions/:id/archive", c => c.json(store.setSessionArchived(id(c.req.param("id")), false)));
   app.get("/api/v1/agents/:agentId/blocks", c => {
     const { limit, offset } = pagination(c.req.query("limit"), c.req.query("cursor"));
     const view = c.req.query("view") ?? "all";
