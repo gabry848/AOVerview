@@ -1,9 +1,9 @@
-import { CircleDot, GitBranch, LayoutDashboard } from "lucide-react";
+import { Archive, CircleDot, GitBranch, LayoutDashboard } from "lucide-react";
 import type { AgentOverview, SessionOverview, SessionSummary } from "@aoverview/core/contracts";
 import { Button } from "@/components/ui/button";
 import {
   SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
-  SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, useSidebar,
+  SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, useSidebar,
 } from "@/components/ui/sidebar";
 import { AgentAvatar, statusLabels } from "./overview-ui";
 import { cn } from "@/lib/utils";
@@ -17,9 +17,11 @@ export interface NavigationProps {
   hasMore: boolean;
   loading: boolean;
   loadMore: () => void;
+  archive: (session: SessionSummary) => void;
+  archiveDisabled: boolean;
 }
 
-export function Navigation({ sessions, sessionId, overview, agentId, navigate, hasMore, loading, loadMore }: NavigationProps) {
+export function Navigation({ sessions, sessionId, overview, agentId, navigate, hasMore, loading, loadMore, archive, archiveDisabled }: NavigationProps) {
   const { setOpenMobile } = useSidebar();
   function choose(id: string | null, childId: string | null = null) {
     navigate(id, childId);
@@ -45,6 +47,11 @@ export function Navigation({ sessions, sessionId, overview, agentId, navigate, h
                 <CircleDot className={cn(session.status === "running" ? "text-emerald-400" : session.status === "failed" ? "text-red-400" : "text-muted-foreground")} aria-hidden="true"/>
                 <span>{session.title}</span>
               </SidebarMenuButton>
+              <SidebarMenuAction showOnHover disabled={archiveDisabled} onClick={() => archive(session)}
+                title={`Archivia sessione: ${session.title}`} aria-label={`Archivia sessione: ${session.title}`}
+                className="disabled:pointer-events-none disabled:opacity-50">
+                <Archive aria-hidden="true"/>
+              </SidebarMenuAction>
             </SidebarMenuItem>)}
           </SidebarMenu>
           {sessions.length === 0 && !loading && <p className="px-2 py-2 text-xs leading-5 text-muted-foreground group-data-[collapsible=icon]:hidden">Le prime sessioni compariranno qui.</p>}

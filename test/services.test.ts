@@ -34,6 +34,38 @@ test("API provides paginated read-only snapshots and never exposes writer handle
   assert.equal(f.store.latestSequence(), 2);
 });
 
+test("API archives and restores sessions, notifies readers and rejects foreign writes", async t => {
+  const f = fixture(t); const root = open(f.store); const other = open(f.store, false);
+  const api = createApiApp(f.store); t.after(api.close);
+  const url = `/api/v1/sessions/${root.sessionId}/archive`;
+  const sequence = f.store.latestSequence();
+  for (const headers of [{ Origin: "https://foreign.invalid" }, { "Sec-Fetch-Site": "cross-site" }]) {
+    assert.equal((await api.app.request(url, { method: "POST", headers })).status, 403);
+    assert.equal((await api.app.request(url, { method: "DELETE", headers })).status, 403);
+  }
+  assert.equal(f.store.latestSequence(), sequence);
+  assert.equal((await api.app.request("/api/v1/sessions/missing/archive", { method: "POST" })).status, 404);
+  assert.equal((await api.app.request("/api/v1/sessions/invalid!/archive", { method: "POST" })).status, 400);
+  const response = await api.app.request(url, { method: "POST", headers: { Origin: "http://localhost:3000" } });
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert(!body.includes(root.handle)); assert(!body.includes('"handle"'));
+  assert.equal(typeof JSON.parse(body).archivedAt, "number");
+  assert.equal((await api.app.request(url, { method: "POST" })).status, 200);
+  assert.equal(f.store.latestSequence(), sequence + 1);
+  const list = await (await api.app.request("/api/v1/sessions?limit=1")).json();
+  assert.deepEqual(list.items.map((item: { id: string }) => item.id), [other.sessionId]);
+  assert.equal(list.nextCursor, null);
+  assert.equal(list.items.reduce((sum: number, item: { openGoals: number }) => sum + item.openGoals, 0), 0);
+  const snapshot = await (await api.app.request(`/api/v1/sessions/${root.sessionId}`)).json();
+  assert.equal(snapshot.session.archivedAt, JSON.parse(body).archivedAt);
+  assert.equal((await api.app.request(url, { method: "DELETE" })).status, 200);
+  assert.equal(f.store.latestSequence(), sequence + 2);
+  const restored = await (await api.app.request("/api/v1/sessions")).json();
+  assert.equal(restored.items.length, 2);
+  assert.equal(restored.items.find((item: { id: string }) => item.id === root.sessionId).archivedAt, null);
+});
+
 test("SSE delivers writes from another connection and replays or resets reconnect cursors", async t => {
   const f = fixture(t); const api = createApiApp(f.connect(true), 20);
   const server = serve({ fetch: api.app.fetch, hostname: "127.0.0.1", port: 0 });
@@ -82,6 +114,36 @@ test("SSE delivers writes from another connection and replays or resets reconnec
     const first = await reset.body!.getReader().read();
     assert.match(decoder.decode(first.value), /event: reset/);
   } finally { resetController.abort(); }
+});
+
+test("SSE publishes archive changes to another open dashboard", async t => {
+  const f = fixture(t); const root = open(f.store);
+  const api = createApiApp(f.connect(), 20);
+  const server = serve({ fetch: api.app.fetch, hostname: "127.0.0.1", port: 0 });
+  await new Promise<void>(resolve => server.once("listening", resolve));
+  const address = server.address(); assert(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+  const controller = new AbortController();
+  t.after(() => {
+    controller.abort(); api.close(); server.close();
+    if ("closeAllConnections" in server) server.closeAllConnections();
+  });
+  const response = await fetch(`${base}/api/v1/events`, { signal: controller.signal });
+  const reader = response.body!.getReader();
+  assert.match(new TextDecoder().decode((await reader.read()).value), /event: ready/);
+  const sequence = f.store.latestSequence();
+  assert.equal((await fetch(`${base}/api/v1/sessions/${root.sessionId}/archive`, { method: "POST" })).status, 200);
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    let received = "";
+    while (!received.includes("event: change")) {
+      const part = await reader.read(); assert(!part.done);
+      received += new TextDecoder().decode(part.value);
+    }
+    assert(received.includes(`id: ${sequence + 1}`));
+    assert(received.includes(root.sessionId));
+    assert.equal(f.connect(true).listSessions().items.length, 0);
+  } finally { clearTimeout(timeout); }
 });
 
 test("home counts unfinished goals and blocked activities across parent and subagents", async t => {

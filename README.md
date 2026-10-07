@@ -19,7 +19,7 @@ Apri **http://localhost:3000**. Il comando compila il core, esegue le migrazioni
 | --- | --- |
 | Dashboard React | `http://localhost:3000` |
 | MCP HTTP | `http://localhost:3001/mcp` |
-| API di lettura | `http://localhost:3002/api/v1` |
+| API dashboard | `http://localhost:3002/api/v1` |
 | Disponibilità API | `http://localhost:3002/health` |
 
 Il precedente `hello-world` è sostituito dai quattro tool di reporting. L'endpoint MCP passa dalla porta 3000 alla **3001**.
@@ -40,6 +40,8 @@ Le attività sono visualizzate su un canvas React Flow a schermo intero, accanto
 La todo list fluttua sul canvas e può essere nascosta; su mobile si apre dal pulsante Obiettivi. Gli aggiornamenti live conservano il punto di vista scelto. I controlli in basso a destra permettono di centrare l’attività recente, mostrare tutti i blocchi caricati e regolare lo zoom. Trascina lo sfondo o scorri con il trackpad per spostarti; usa i pulsanti, il gesto pinch o Cmd/Ctrl con la rotella per lo zoom. Le animazioni rispettano la preferenza di movimento ridotto.
 
 La home mostra agent al lavoro, obiettivi aperti e attività bloccate nelle sessioni caricate. Gli agent con sole attività bloccate non sono conteggiati come al lavoro; gli obiettivi annullati non sono aperti. Le card delle sessioni mostrano attività corrente o problema da risolvere, agent, subagent, avanzamento e ultimo aggiornamento, con un solo clic per aprire la canvas.
+
+Il comando **Archivia**, disponibile sulle card, nella sidebar e nel dettaglio, nasconde una sessione dall’elenco e dai conteggi della dashboard. L’archiviazione è persistente e conserva obiettivi, attività e aggiornamenti degli agent. **Annulla** ripristina l’ultima sessione archiviata; anche un collegamento diretto alla sessione permette di ripristinarla. Le altre finestre aperte si aggiornano in diretta.
 
 ## Collegare un agent
 
@@ -120,12 +122,14 @@ Per concludere con successo, chiudi i blocchi attivi/bloccati, attendi i discend
 
 ## API e aggiornamenti live
 
-API esclusivamente di lettura; non espone handle di scrittura o ricevute interne.
+L’API espone le viste e i comandi di archiviazione della dashboard; non espone handle di scrittura o ricevute interne. Il reporting degli agent resta gestito tramite MCP.
 
 | Endpoint | Dati |
 | --- | --- |
-| `GET /api/v1/sessions` | Sessioni e attività correnti |
+| `GET /api/v1/sessions` | Sessioni non archiviate e attività correnti |
 | `GET /api/v1/sessions/:id` | Obiettivi e gerarchia degli agent |
+| `POST /api/v1/sessions/:id/archive` | Archivia una sessione senza eliminarne i dati |
+| `DELETE /api/v1/sessions/:id/archive` | Ripristina una sessione archiviata |
 | `GET /api/v1/agents/:agentId/blocks` | Blocchi senza dettagli completi |
 | `GET /api/v1/agents/:agentId/blocks/:blockId` | Blocco e passaggi svolti |
 | `GET /api/v1/events` | Notifiche SSE |
@@ -160,7 +164,7 @@ npm run dev -w @aoverview/dashboard
 
 Esegui gli ultimi tre comandi in terminali distinti. Per i servizi compilati usa `start`, dopo `npm run build`.
 
-SQLite usa WAL, foreign key e timeout dei lock. MCP scrive; API ha una connessione in sola lettura. Le migrazioni sono versionate e idempotenti. La migrazione alla versione 2 mantiene sessioni e ricevute esistenti, assegna `medium` alle sessioni precedenti e lascia i riferimenti non riportati a `null`.
+SQLite usa WAL, foreign key e timeout dei lock. MCP scrive il reporting; l’API può modificare solo lo stato di archiviazione tramite i suoi endpoint. Le migrazioni sono versionate e idempotenti. La migrazione alla versione 2 mantiene sessioni e ricevute esistenti, assegna `medium` alle sessioni precedenti e lascia i riferimenti non riportati a `null`. La versione 3 aggiunge `archivedAt`, inizialmente `null`, senza cambiare la cronologia o le revisioni degli agent.
 
 ## Verifica
 

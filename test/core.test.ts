@@ -122,7 +122,7 @@ test("migration upgrades version-one data without changing history or exact retr
   const sequence = f.store.latestSequence();
   // Restore the v1 table shape and original receipt payload, as stored by released clients.
   const { detailLevel: _, ...legacyIdentity } = { ...root, revision: 0 };
-  f.store.db.exec("ALTER TABLE sessions DROP COLUMN detailLevel; ALTER TABLE details DROP COLUMN reference; PRAGMA user_version=1;");
+  f.store.db.exec("ALTER TABLE sessions DROP COLUMN detailLevel; ALTER TABLE sessions DROP COLUMN archivedAt; ALTER TABLE details DROP COLUMN reference; PRAGMA user_version=1;");
   f.store.db.prepare("UPDATE receipts SET result=? WHERE scope='open' AND requestId=?").run(JSON.stringify(legacyIdentity), input.requestId);
   migrateDatabase(f.path);
   migrateDatabase(f.path);
@@ -134,6 +134,59 @@ test("migration upgrades version-one data without changing history or exact retr
   assert.equal(writer.latestSequence(), sequence);
   update(writer, root, [{ op: "block", id: "work", details: [{ id: "d1", action: "Checked legacy storage", reference: "src/storage.ts" }] }]);
   assert.equal(f.connect(true).getBlock(root.agentId, "work").details[0]?.reference, "src/storage.ts");
+});
+
+test("archiving persists, filters before pagination and keeps agent work and history intact", t => {
+  const f = fixture(t);
+  const roots = Array.from({ length: 3 }, () => open(f.store));
+  const root = roots[1]!;
+  update(f.store, root, [{ op: "block", id: "work", title: "Ongoing work", status: "active",
+    details: [{ id: "d1", action: "Keep the existing history" }] }]);
+  const before = f.store.getSession(root.sessionId);
+  const block = f.store.getBlock(root.agentId, "work");
+  const sequence = f.store.latestSequence();
+  const archived = f.store.setSessionArchived(root.sessionId, true);
+  assert.equal(typeof archived.archivedAt, "number");
+  assert.deepEqual(f.store.setSessionArchived(root.sessionId, true), archived);
+  assert.equal(f.store.latestSequence(), sequence + 1);
+  assert.deepEqual(f.store.changesSince(sequence).map(event => ({ ...event })),
+    [{ sequence: sequence + 1, sessionId: root.sessionId, agentId: root.agentId }]);
+  const first = f.store.listSessions(1);
+  const second = f.store.listSessions(1, Number(first.nextCursor));
+  assert.equal(first.items.length, 1); assert.equal(first.nextCursor, "1");
+  assert.equal(second.items.length, 1); assert.equal(second.nextCursor, null);
+  assert.deepEqual(new Set([...first.items, ...second.items].map(item => item.id)),
+    new Set(roots.filter(item => item !== root).map(item => item.sessionId)));
+  const after = f.store.getSession(root.sessionId);
+  assert.deepEqual({ ...after.session }, archived);
+  assert.deepEqual({ ...after, session: before.session }, before);
+  assert.deepEqual(f.store.getBlock(root.agentId, "work"), block);
+  assert.equal(f.store.resume({ handle: root.handle }).revision, root.revision);
+  migrateDatabase(f.path);
+  assert.equal(f.connect(true).listSessions().items.length, 2);
+  assert.equal(f.connect(true).getSession(root.sessionId).session.archivedAt, archived.archivedAt);
+  update(f.store, root, [{ op: "block", id: "work", summary: "Updates continue while archived" }]);
+  assert.equal(f.store.listSessions().items.some(item => item.id === root.sessionId), false);
+  const restored = f.store.setSessionArchived(root.sessionId, false);
+  assert.equal(restored.archivedAt, null);
+  assert.equal(f.store.listSessions().items.length, 3);
+  const restoredSequence = f.store.latestSequence();
+  assert.deepEqual(f.store.setSessionArchived(root.sessionId, false), restored);
+  assert.equal(f.store.latestSequence(), restoredSequence);
+  expectCode(() => f.store.setSessionArchived("missing", true), "NOT_FOUND");
+  expectCode(() => f.connect(true).setSessionArchived(root.sessionId, true), "READ_ONLY");
+});
+
+test("migration adds archive state to version-two sessions without changing stored work", t => {
+  const f = fixture(t); const root = open(f.store);
+  update(f.store, root, [{ op: "block", id: "work", title: "Existing work", status: "active" }]);
+  const before = f.store.getSession(root.sessionId);
+  const sequence = f.store.latestSequence();
+  f.store.db.exec("ALTER TABLE sessions DROP COLUMN archivedAt; PRAGMA user_version=2;");
+  migrateDatabase(f.path); migrateDatabase(f.path);
+  assert.deepEqual(f.connect(true).getSession(root.sessionId), before);
+  assert.equal(f.store.latestSequence(), sequence);
+  assert.equal(f.store.listSessions().items.length, 1);
 });
 
 test("tentative blocks can change or be cancelled but cannot contain performed work", t => {

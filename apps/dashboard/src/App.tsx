@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState, type CSSProperties } from "react";
-import { Activity, AlertCircle, ArrowRight, ArrowUpRight, GitBranch, Layers3, LayoutDashboard, Target } from "lucide-react";
-import type { SessionOverview, SessionSummary } from "@aoverview/core/contracts";
-import { useLiveUpdates, usePages, useResource } from "./data.js";
+import { Activity, AlertCircle, Archive, ArchiveRestore, ArrowRight, ArrowUpRight, GitBranch, Layers3, LayoutDashboard, Target } from "lucide-react";
+import type { Session, SessionOverview, SessionSummary } from "@aoverview/core/contracts";
+import { setSessionArchived, useLiveUpdates, usePages, useResource } from "./data.js";
 import { Navigation } from "./components/navigation";
 import { AgentAvatar, ErrorNotice, LoadingCards, StatusBadge, StatusIndicator, UpdatedTime } from "./components/overview-ui";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,9 @@ export function App() {
   const [retry, setRetry] = useState(0);
   const [sessionPages, setSessionPages] = useState(1);
   const [now, setNow] = useState(Date.now());
+  const [busySessionId, setBusySessionId] = useState<string | null>(null);
+  const [lastArchived, setLastArchived] = useState<Pick<Session, "id" | "title"> | null>(null);
+  const [archiveError, setArchiveError] = useState<{ session: Pick<Session, "id" | "title">; archived: boolean; message: string } | null>(null);
   const live = useLiveUpdates();
   const sessions = usePages<SessionSummary>("/api/v1/sessions", `${live.versions.list}:${retry}`, sessionPages);
   const sessionVersion = `${live.versions.all}:${live.versions.sessions[selection.sessionId ?? ""] ?? 0}:${retry}`;
@@ -43,6 +46,21 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
+  async function changeArchive(session: Pick<Session, "id" | "title">, archived = true) {
+    if (busySessionId) return;
+    setBusySessionId(session.id);
+    setArchiveError(null);
+    try {
+      await setSessionArchived(session.id, archived);
+      if (archived) sessions.updateData(page => ({ ...page, items: page.items.filter(item => item.id !== session.id) }));
+      setLastArchived(archived ? session : null);
+      if (selection.sessionId === session.id) navigate(null);
+      setRetry(old => old + 1);
+    } catch (error) {
+      setArchiveError({ session, archived, message: error instanceof Error ? error.message : "Operazione non riuscita. Riprova." });
+    } finally { setBusySessionId(null); }
+  }
+
   const list = sessions.data?.items ?? [];
   const overview = selected.data;
   const agent = overview?.agents.find(item => item.id === selection.agentId)
@@ -60,6 +78,7 @@ export function App() {
         </div>
       </SidebarHeader>
       <Navigation sessions={list} sessionId={selection.sessionId} overview={overview} agentId={agent?.id} navigate={navigate}
+        archive={session => void changeArchive(session)} archiveDisabled={busySessionId !== null}
         hasMore={Boolean(sessions.data?.nextCursor)} loading={sessions.loading} loadMore={() => setSessionPages(old => old + 1)}/>
     </Sidebar>
     <SidebarInset className={cn(selection.sessionId && "canvas-workspace")}>
@@ -77,14 +96,25 @@ export function App() {
       <div id="main" tabIndex={-1} className={cn("outline-none", selection.sessionId
         ? "relative min-h-0 flex-1" : "mx-auto w-full max-w-[1440px] flex-1 space-y-6 p-4 sm:p-6")}>
         {error && <div className={cn(selection.sessionId && "absolute top-28 left-4 z-40 max-w-md right-4 sm:left-6")}><ErrorNotice message={error} retry={retryData}/></div>}
+        {archiveError && <div className={cn(selection.sessionId && "absolute top-36 left-4 z-40 max-w-md right-4 sm:left-6")}>
+          <ErrorNotice message={archiveError.message} retry={() => void changeArchive(archiveError.session, archiveError.archived)}/>
+        </div>}
         {!selection.sessionId ? <>
+          {lastArchived && <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border bg-muted/30 px-4 py-3 text-sm">
+            <Archive className="size-4 shrink-0 text-muted-foreground" aria-hidden="true"/>
+            <span className="min-w-0 flex-1 wrap-anywhere">Sessione archiviata: {lastArchived.title}</span>
+            <Button variant="outline" size="sm" disabled={busySessionId !== null} onClick={() => void changeArchive(lastArchived, false)}>
+              <ArchiveRestore aria-hidden="true"/>Annulla
+            </Button>
+          </div>}
           {sessions.data && <SessionMetrics sessions={list} partial={Boolean(sessions.data.nextCursor)}/>}
           <div className="flex items-center justify-between gap-3 pt-1"><h2 className="text-sm font-semibold">Sessioni</h2>
             <span className="text-xs text-muted-foreground">{list.length}</span></div>
           {sessions.loading && !sessions.data && <LoadingCards count={3} label="Caricamento delle sessioni…"/>}
           {!sessions.loading && !sessions.error && list.length === 0 && <EmptyWorkspace/>}
           <div className="grid items-stretch gap-3 xl:grid-cols-2 2xl:grid-cols-3">
-            {list.map(session => <SessionCard key={session.id} session={session} now={now} open={() => navigate(session.id)}/>)}
+            {list.map(session => <SessionCard key={session.id} session={session} now={now} open={() => navigate(session.id)}
+              archive={() => void changeArchive(session)} archiveDisabled={busySessionId !== null} archiving={busySessionId === session.id}/>)}
           </div>
           {sessions.data?.nextCursor && <div className="flex justify-center"><Button variant="outline" disabled={sessions.loading}
             onClick={() => setSessionPages(old => old + 1)}>{sessions.loading ? "Caricamento…" : "Mostra altre sessioni"}</Button></div>}
@@ -103,8 +133,16 @@ export function App() {
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><AgentAvatar name={agent.name} small/>
                     <span className="min-w-0 wrap-anywhere">{agent.name}</span><StatusBadge status={agent.status}/>
                     {!live.connected && <span role="status" className="text-amber-400">Riconnessione…</span>}
+                    {overview.session.archivedAt !== null && <span>Archiviata</span>}
                   </div>
                 </div>
+                <Button variant="ghost" size="sm" className="ml-auto" disabled={busySessionId !== null}
+                  aria-label={overview.session.archivedAt !== null ? "Ripristina sessione" : "Archivia sessione"}
+                  title={overview.session.archivedAt !== null ? "Ripristina sessione" : "Archivia sessione"}
+                  onClick={() => void changeArchive(overview.session, overview.session.archivedAt === null)}>
+                  {overview.session.archivedAt !== null ? <ArchiveRestore aria-hidden="true"/> : <Archive aria-hidden="true"/>}
+                  <span className="hidden sm:inline">{overview.session.archivedAt !== null ? "Ripristina" : "Archivia"}</span>
+                </Button>
               </div>
             </header>
             <Suspense fallback={<div className="absolute inset-0 grid place-items-center p-6"><div className="w-full max-w-sm"><LoadingCards label="Caricamento del canvas…"/></div></div>}>
@@ -155,11 +193,14 @@ function EmptyWorkspace() {
   </CardContent></Card>;
 }
 
-function SessionCard({ session, now, open }: { session: SessionSummary; now: number; open: () => void }) {
+function SessionCard({ session, now, open, archive, archiveDisabled, archiving }: {
+  session: SessionSummary; now: number; open: () => void; archive: () => void; archiveDisabled: boolean; archiving: boolean;
+}) {
   const blocked = session.status === "running" && session.currentBlock?.status === "blocked";
   const status = blocked ? "blocked" : session.status;
-  return <button onClick={open} aria-label={`Apri sessione: ${session.title}`}
-    className="group flex h-full flex-col gap-3 rounded-xl border bg-card p-5 text-left transition-colors hover:border-ring/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+  return <div className="group flex h-full flex-col rounded-xl border bg-card transition-colors hover:border-ring/50">
+    <button onClick={open} aria-label={`Apri sessione: ${session.title}`}
+      className="flex flex-1 flex-col gap-3 rounded-t-xl p-5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
     <div className="flex items-start gap-2.5"><StatusIndicator status={status} className="mt-1"/>
       <h3 className="min-w-0 flex-1 wrap-anywhere text-sm leading-6 font-semibold">{session.title}</h3>
       <ArrowUpRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden="true"/></div>
@@ -176,5 +217,10 @@ function SessionCard({ session, now, open }: { session: SessionSummary; now: num
     <div className="flex items-center gap-3"><Progress value={session.totalGoals ? session.completedGoals / session.totalGoals * 100 : 0}
       aria-label="Obiettivi completati" className="h-1 flex-1"/>
       <UpdatedTime value={session.updatedAt} now={now}/></div>
-  </button>;
+    </button>
+    <div className="flex justify-end px-3 pb-3"><Button variant="ghost" size="sm" className="text-muted-foreground"
+      disabled={archiveDisabled} onClick={archive} aria-label={`Archivia sessione: ${session.title}`}>
+      <Archive aria-hidden="true"/>{archiving ? "Archiviazione…" : "Archivia"}
+    </Button></div>
+  </div>;
 }

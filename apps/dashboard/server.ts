@@ -17,8 +17,10 @@ app.all("/api/*", async c => {
     const upstream = new URL(c.req.url);
     upstream.protocol = "http:"; upstream.hostname = "127.0.0.1"; upstream.port = String(apiPort);
     const headers = new Headers();
-    const eventId = c.req.header("Last-Event-ID");
-    if (eventId) headers.set("Last-Event-ID", eventId);
+    for (const name of ["Last-Event-ID", "Origin", "Sec-Fetch-Site"]) {
+      const value = c.req.header(name);
+      if (value) headers.set(name, value);
+    }
     const response = await fetch(upstream, { method: c.req.method, headers, signal: c.req.raw.signal });
     return new Response(response.body, { status: response.status, headers: response.headers });
   } catch { return c.json({ error: "UNAVAILABLE", message: "API unavailable." }, 503); }
