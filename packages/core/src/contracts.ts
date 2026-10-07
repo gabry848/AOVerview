@@ -65,6 +65,7 @@ export type DetailLevel = z.infer<typeof detailLevelSchema>;
 
 export interface Session {
   id: string; title: string; rootAgentId: string; detailLevel: DetailLevel; createdAt: number; updatedAt: number;
+  archivedAt: number | null;
 }
 export interface Agent {
   id: string; sessionId: string; parentAgentId: string | null; parentBlockId: string | null;

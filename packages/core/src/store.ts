@@ -296,8 +296,21 @@ export class OverviewStore {
           WHERE child.sessionId=s.id AND b.status='blocked') AS blockedCount,
         (SELECT COUNT(*) FROM goals WHERE sessionId=s.id) AS totalGoals
         FROM sessions s JOIN agents a ON a.id=s.rootAgentId
+        WHERE s.archivedAt IS NULL
         ORDER BY s.createdAt DESC, s.id DESC LIMIT ? OFFSET ?`, limit + 1, offset);
       return this.page(rows.map(row => ({ ...row, currentBlock: this.currentBlock(row.rootAgentId) })), limit, offset);
+    });
+  }
+
+  setSessionArchived(sessionId: string, archived: boolean): Session {
+    return this.transaction(true, () => {
+      const session = this.one<Session>("SELECT * FROM sessions WHERE id=?", sessionId);
+      requireCondition(session, "NOT_FOUND", "Session not found.", 404);
+      if ((session.archivedAt !== null) === archived) return { ...session };
+      const archivedAt = archived ? Date.now() : null;
+      this.run("UPDATE sessions SET archivedAt=? WHERE id=?", archivedAt, sessionId);
+      this.run("INSERT INTO changes(sessionId, agentId) VALUES(?,?)", sessionId, session.rootAgentId);
+      return { ...session, archivedAt };
     });
   }
 
