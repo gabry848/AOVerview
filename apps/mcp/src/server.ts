@@ -1,5 +1,8 @@
 import { MCPServer } from "mcp-use";
-import { OverviewError, OverviewStore, openSchema, registerSchema, resumeSchema, updateSchema } from "@aoverview/core";
+import {
+  OverviewError, OverviewStore, openSchema, registerSchema, resumeSchema, updateSchema,
+  listSessionsSchema, getSessionSchema, listBlocksSchema, getBlockSchema,
+} from "@aoverview/core";
 
 function respond(operation: () => object) {
   try {
@@ -16,7 +19,7 @@ function respond(operation: () => object) {
 export function createMcpServer(store: OverviewStore) {
   const server = new MCPServer({
     name: "aoverview", version: "0.1.0", basePath: "/mcp",
-    description: "Report macro goals, activity blocks, factual steps and delegations to a local dashboard.",
+    description: "Report and browse macro goals, activity blocks, factual steps and delegations in a local dashboard.",
     instructions: "Keep three levels distinct: macro goals, bounded activity blocks, and performed steps with action, result and an observed reference. Several blocks can advance one goal; completing a block does not automatically complete its goal. Follow the session detailLevel: low groups related work, medium separates tasks, high separates meaningful subactivities; never one block per tool call or a fixed block count. Include meaningful steps before closing performed work. Batch only changes. Preserve handle and revision. Register subagents before spawning; pass their handle, inherited detailLevel and AOVerview skill. Proposals are tentative. Resume after context loss or revision conflicts.",
     logging: { enabled: false },
     allowedOrigins: [],
@@ -39,5 +42,25 @@ export function createMcpServer(store: OverviewStore) {
     inputSchema: resumeSchema,
     annotations: { readOnlyHint: true },
   }, async input => respond(() => store.resume(input)));
+  server.tool({
+    name: "overview_list_sessions", description: "List non-archived sessions with their current activity and progress counts. Paginated: limit 1–100 (default 30); pass nextCursor as cursor for the next page. Read-only; no writer handle required or returned.",
+    inputSchema: listSessionsSchema,
+    annotations: { readOnlyHint: true },
+  }, async input => respond(() => store.listSessions(input.limit, Number(input.cursor))));
+  server.tool({
+    name: "overview_get_session", description: "Read a session's goals and agent hierarchy, including agent IDs for browsing activities. Also works for archived sessions by ID. Read-only; no writer handle required or returned.",
+    inputSchema: getSessionSchema,
+    annotations: { readOnlyHint: true },
+  }, async input => respond(() => store.getSession(input.sessionId)));
+  server.tool({
+    name: "overview_list_blocks", description: "List one agent's activity blocks without full step details. view: all (default, includes cancelled proposals), history (started work, most recent first), or proposed. Paginated: limit 1–100 (default 30); pass nextCursor as cursor. Read-only; no writer handle required or returned.",
+    inputSchema: listBlocksSchema,
+    annotations: { readOnlyHint: true },
+  }, async input => respond(() => store.listBlocks(input.agentId, input.limit, Number(input.cursor), input.view)));
+  server.tool({
+    name: "overview_get_block", description: "Read a complete activity block with all action/result/reference steps in order. blockId is scoped to agentId; use both IDs from overview_list_blocks. Read-only; no writer handle required or returned.",
+    inputSchema: getBlockSchema,
+    annotations: { readOnlyHint: true },
+  }, async input => respond(() => store.getBlock(input.agentId, input.blockId)));
   return server;
 }

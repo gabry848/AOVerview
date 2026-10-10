@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import type { OpenResult, RegisterResult, ResumeResult, WriteResult } from "@aoverview/core";
+import type { Block, BlockDetail, OpenResult, Page, RegisterResult, ResumeResult, SessionOverview, SessionSummary, WriteResult } from "@aoverview/core";
 import { createApiApp } from "../apps/api/src/app.js";
 import { createMcpServer } from "../apps/mcp/src/server.js";
 import { delegate, fixture, open, update } from "./helpers.js";
@@ -179,7 +179,10 @@ test("real MCP clients open two sessions, delegate, report progress, integrate a
   t.after(async () => { await client.close(); await server.close(); });
   await client.connect(new StreamableHTTPClientTransport(new URL(url)));
   const tools = await client.listTools();
-  assert.deepEqual(tools.tools.map(tool => tool.name).sort(), ["overview_open", "overview_register_subagent", "overview_resume", "overview_update"]);
+  assert.deepEqual(tools.tools.map(tool => tool.name).sort(), [
+    "overview_get_block", "overview_get_session", "overview_list_blocks", "overview_list_sessions",
+    "overview_open", "overview_register_subagent", "overview_resume", "overview_update",
+  ]);
   async function call<T>(name: string, args: Record<string, unknown>): Promise<T> {
     const result = await client.callTool({ name, arguments: args });
     assert(!result.isError, JSON.stringify(result.content));
@@ -213,4 +216,96 @@ test("real MCP clients open two sessions, delegate, report progress, integrate a
   assert.equal(conflict.isError, true);
   assert.match(JSON.stringify(conflict.content), /REVISION_CONFLICT/);
   assert.equal(f.store.listBlocks(other.agentId).items.length, 0);
+});
+
+test("MCP reads browse full history without handles or state changes and validate inputs", async t => {
+  const f = fixture(t); const root = open(f.store); const other = open(f.store, false);
+  const archived = open(f.store, false); f.store.setSessionArchived(archived.sessionId, true);
+  const details = Array.from({ length: 5 }, (_, i) => ({
+    id: `d${i}`, action: `Step ${i}`, result: `Result ${i}`, reference: `src/file${i}.ts`,
+  }));
+  update(f.store, root, [
+    { op: "block", id: "past", title: "Past activity", status: "active", details },
+    { op: "block", id: "past", status: "completed", outcome: "Delivered" },
+    { op: "block", id: "work", title: "Parent activity", status: "active" },
+    { op: "block", id: "next", title: "Next activity", status: "proposed" },
+    { op: "block", id: "cancelled", title: "Dropped proposal", status: "proposed" },
+    { op: "block", id: "cancelled", status: "cancelled" },
+  ]);
+  const child = delegate(f.store, root);
+  update(f.store, child, [{ op: "block", id: "work", title: "Child activity", status: "active", details }]);
+  const sequence = f.store.latestSequence();
+  const snapshot = f.store.getSession(root.sessionId);
+  // A database connection that cannot write also enforces the read-only contract.
+  const server = createMcpServer(f.connect(true));
+  const { url } = await server.listen(0, { host: "127.0.0.1" });
+  const client = new Client({ name: "aoverview-reader", version: "1.0.0" }, { capabilities: {}, versionNegotiation: { mode: "auto" } });
+  t.after(async () => { await client.close(); await server.close(); });
+  await client.connect(new StreamableHTTPClientTransport(new URL(url)));
+  const catalog = await client.listTools();
+  for (const name of ["overview_list_sessions", "overview_get_session", "overview_list_blocks", "overview_get_block"]) {
+    assert.equal(catalog.tools.find(tool => tool.name === name)?.annotations?.readOnlyHint, true);
+  }
+  async function call<T>(name: string, args: Record<string, unknown>): Promise<T> {
+    const result = await client.callTool({ name, arguments: args });
+    assert(!result.isError, JSON.stringify(result.content));
+    const json = JSON.stringify(result);
+    for (const writer of [root, other, archived, child]) assert(!json.includes(writer.handle));
+    assert(!json.includes('"handle"')); assert(!json.includes('"handleHash"'));
+    return result.structuredContent as T;
+  }
+  assert.deepEqual(await call("overview_list_sessions", {}), JSON.parse(JSON.stringify(f.store.listSessions())));
+  const first = await call<Page<SessionSummary>>("overview_list_sessions", { limit: 1 });
+  assert.equal(first.items.length, 1); assert.equal(first.nextCursor, "1");
+  const second = await call<Page<SessionSummary>>("overview_list_sessions", { limit: 1, cursor: first.nextCursor });
+  assert.equal(second.items.length, 1); assert.equal(second.nextCursor, null);
+  assert.notEqual(first.items[0]!.id, second.items[0]!.id);
+  assert.deepEqual(new Set([first.items[0]!.id, second.items[0]!.id]), new Set([root.sessionId, other.sessionId]));
+  const session = await call<SessionOverview>("overview_get_session", { sessionId: root.sessionId });
+  assert.deepEqual(session, JSON.parse(JSON.stringify(snapshot)));
+  assert.equal(session.agents.find(agent => agent.id === child.agentId)?.parentAgentId, root.agentId);
+  assert.equal((await call<SessionOverview>("overview_get_session", { sessionId: archived.sessionId })).session.archivedAt,
+    f.store.getSession(archived.sessionId).session.archivedAt);
+  assert.deepEqual(await call("overview_list_blocks", { agentId: other.agentId }), { items: [], nextCursor: null });
+  const ids: string[] = []; let cursor: string | null = null;
+  do {
+    const page: Page<Block> = await call("overview_list_blocks", { agentId: root.agentId, limit: 1, ...(cursor === null ? {} : { cursor }) });
+    ids.push(...page.items.map(block => block.id)); cursor = page.nextCursor;
+  } while (cursor !== null);
+  assert.deepEqual(ids, ["past", "work", "next", "cancelled"]);
+  const history = await call<Page<Block>>("overview_list_blocks", { agentId: root.agentId, view: "history" });
+  assert.deepEqual(history.items.map(block => block.id), ["work", "past"]);
+  const proposed = await call<Page<Block>>("overview_list_blocks", { agentId: root.agentId, view: "proposed" });
+  assert.deepEqual(proposed.items.map(block => block.id), ["next"]);
+  const past = await call<BlockDetail>("overview_get_block", { agentId: root.agentId, blockId: "past" });
+  assert.equal(past.outcome, "Delivered");
+  assert.deepEqual(past.details.map(({ id, action, result, reference }) => ({ id, action, result, reference })), details);
+  assert.equal((await call<BlockDetail>("overview_get_block", { agentId: root.agentId, blockId: "work" })).title, "Parent activity");
+  assert.equal((await call<BlockDetail>("overview_get_block", { agentId: child.agentId, blockId: "work" })).details.length, 5);
+  for (const [name, args] of [
+    ["overview_get_session", { sessionId: "missing" }],
+    ["overview_list_blocks", { agentId: "missing" }],
+    ["overview_get_block", { agentId: other.agentId, blockId: "work" }],
+  ] as const) {
+    const result = await client.callTool({ name, arguments: args });
+    assert.equal(result.isError, true); assert.match(JSON.stringify(result.content), /NOT_FOUND/);
+  }
+  for (const [name, args] of [
+    ...[0, 101, 1.5, "1"].map(limit => ["overview_list_sessions", { limit }] as const),
+    ...["invalid", "-1", "1.5", "9007199254740992", 1, null].map(cursor => ["overview_list_sessions", { cursor }] as const),
+    ["overview_get_session", { sessionId: "invalid!" }],
+    ["overview_get_session", {}],
+    ["overview_list_blocks", { agentId: root.agentId, view: "unknown" }],
+    ["overview_list_blocks", { agentId: root.agentId, limit: 101 }],
+    ["overview_list_blocks", { agentId: root.agentId, cursor: "invalid" }],
+    ["overview_get_block", { agentId: root.agentId, blockId: "invalid!" }],
+    ["overview_get_block", { agentId: "invalid!", blockId: "work" }],
+    ["overview_get_block", { blockId: "work" }],
+    ["overview_list_sessions", { unexpected: true }],
+  ] as const) {
+    const result = await client.callTool({ name, arguments: args });
+    assert.equal(result.isError, true, `${name}: ${JSON.stringify(args)}`);
+  }
+  assert.equal(f.store.latestSequence(), sequence);
+  assert.deepEqual(f.store.getSession(root.sessionId), snapshot);
 });

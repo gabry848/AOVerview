@@ -54,6 +54,19 @@ export const registerSchema = z.strictObject({
 });
 export const resumeSchema = z.strictObject({ handle: z.string().min(1).max(100) });
 
+const readPagination = {
+  limit: z.number().int().min(1).max(100).default(30),
+  cursor: z.string().regex(/^\d+$/).refine(value => Number.isSafeInteger(Number(value)))
+    .default("0").describe("Use nextCursor from the previous page; omit for the first page."),
+};
+export const listSessionsSchema = z.strictObject(readPagination);
+export const getSessionSchema = z.strictObject({ sessionId: keySchema });
+export const listBlocksSchema = z.strictObject({
+  agentId: keySchema, ...readPagination,
+  view: z.enum(["all", "history", "proposed"]).default("all"),
+});
+export const getBlockSchema = z.strictObject({ agentId: keySchema, blockId: keySchema });
+
 export type OpenInput = z.infer<typeof openSchema>;
 export type UpdateInput = z.infer<typeof updateSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
