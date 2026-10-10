@@ -121,8 +121,8 @@ test("migration upgrades version-one data without changing history or exact retr
   const before = f.store.getBlock(root.agentId, "work");
   const sequence = f.store.latestSequence();
   // Restore the v1 table shape and original receipt payload, as stored by released clients.
-  const { detailLevel: _, ...legacyIdentity } = { ...root, revision: 0 };
-  f.store.db.exec("ALTER TABLE sessions DROP COLUMN detailLevel; ALTER TABLE sessions DROP COLUMN archivedAt; ALTER TABLE details DROP COLUMN reference; PRAGMA user_version=1;");
+  const { detailLevel: _, project: _project, ...legacyIdentity } = { ...root, revision: 0 };
+  f.store.db.exec("DROP INDEX sessions_project; ALTER TABLE sessions DROP COLUMN project; ALTER TABLE sessions DROP COLUMN projectKey; ALTER TABLE sessions DROP COLUMN detailLevel; ALTER TABLE sessions DROP COLUMN archivedAt; ALTER TABLE details DROP COLUMN reference; PRAGMA user_version=1;");
   f.store.db.prepare("UPDATE receipts SET result=? WHERE scope='open' AND requestId=?").run(JSON.stringify(legacyIdentity), input.requestId);
   migrateDatabase(f.path);
   migrateDatabase(f.path);
@@ -182,7 +182,7 @@ test("migration adds archive state to version-two sessions without changing stor
   update(f.store, root, [{ op: "block", id: "work", title: "Existing work", status: "active" }]);
   const before = f.store.getSession(root.sessionId);
   const sequence = f.store.latestSequence();
-  f.store.db.exec("ALTER TABLE sessions DROP COLUMN archivedAt; PRAGMA user_version=2;");
+  f.store.db.exec("DROP INDEX sessions_project; ALTER TABLE sessions DROP COLUMN project; ALTER TABLE sessions DROP COLUMN projectKey; ALTER TABLE sessions DROP COLUMN archivedAt; PRAGMA user_version=2;");
   migrateDatabase(f.path); migrateDatabase(f.path);
   assert.deepEqual(f.connect(true).getSession(root.sessionId), before);
   assert.equal(f.store.latestSequence(), sequence);

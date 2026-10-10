@@ -1,9 +1,13 @@
 import { z } from "zod";
+import { projectKey, projectName } from "./project.js";
 
 export const keySchema = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/);
 const requestId = z.string().min(1).max(100).regex(/^[a-zA-Z0-9:_-]+$/);
 const title = z.string().trim().min(1).max(160);
 const text = z.string().trim().min(1).max(1600);
+const project = z.string().transform(projectName).pipe(z.string().min(1).max(100))
+  .refine(value => projectKey(value).length > 0, "Use a project name, not only separators.")
+  .describe("Free-text project name, e.g. AOVerview. No catalog lookup needed. Case, accents, spaces, hyphens and underscores are ignored when grouping.");
 export const blockStatusSchema = z.enum(["proposed", "active", "blocked", "completed", "failed", "cancelled"]);
 export const agentStatusSchema = z.enum(["reserved", "running", "completed", "failed", "cancelled"]);
 export const goalStatusSchema = z.enum(["pending", "active", "blocked", "completed", "cancelled"]);
@@ -34,11 +38,16 @@ export const delegationMutationSchema = z.strictObject({
   status: z.enum(["cancelled", "integrated"]),
   blockId: keySchema.optional(), note: text.optional(),
 });
+export const projectMutationSchema = z.strictObject({
+  op: z.literal("project"), name: project.nullable()
+    .describe("Set this session's project by name; null removes it. Only the main agent can change it."),
+});
 export const mutationSchema = z.discriminatedUnion("op", [
-  goalMutationSchema, blockMutationSchema, finishMutationSchema, delegationMutationSchema,
+  goalMutationSchema, blockMutationSchema, finishMutationSchema, delegationMutationSchema, projectMutationSchema,
 ]);
 export const openSchema = z.strictObject({
   requestId, title, agentName: title,
+  project: project.optional(),
   detailLevel: detailLevelSchema.optional().describe("Block granularity: low groups related work, medium separates tasks, high separates meaningful subactivities. Default medium; goals stay macro."),
   goals: z.array(z.strictObject({ id: keySchema, title, description: text.optional() })).max(12).optional(),
 });
@@ -78,6 +87,7 @@ export type DetailLevel = z.infer<typeof detailLevelSchema>;
 
 export interface Session {
   id: string; title: string; rootAgentId: string; detailLevel: DetailLevel; createdAt: number; updatedAt: number;
+  project: string | null; projectKey: string | null;
   archivedAt: number | null;
 }
 export interface Agent {
@@ -111,13 +121,14 @@ export interface SessionOverview { session: Session; goals: Goal[]; agents: Agen
 export interface Page<T> { items: T[]; nextCursor: string | null }
 export interface WriteResult { agentId: string; revision: number }
 // Replayed v1 receipts retain their original payload; resume recovers the level.
-export interface OpenResult extends WriteResult { sessionId: string; handle: string; detailLevel?: DetailLevel }
+export interface OpenResult extends WriteResult { sessionId: string; handle: string; detailLevel?: DetailLevel; project?: string | null }
 export interface RegisterResult extends WriteResult {
-  child: { agentId: string; sessionId: string; handle: string; revision: number; detailLevel?: DetailLevel };
+  child: { agentId: string; sessionId: string; handle: string; revision: number; detailLevel?: DetailLevel; project?: string | null };
 }
 export interface ResumeResult {
   agentId: string; sessionId: string; revision: number; status: AgentStatus;
   detailLevel: DetailLevel;
+  project: string | null;
   parentAgentId: string | null; goalId: string | null;
   mandate: string | null; goals: Pick<Goal, "id" | "title" | "status">[];
   active: (BlockContext & { details: Pick<Detail, "id" | "action" | "result" | "reference">[] }) | null;

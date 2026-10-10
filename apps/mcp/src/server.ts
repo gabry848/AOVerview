@@ -20,17 +20,17 @@ export function createMcpServer(store: OverviewStore) {
   const server = new MCPServer({
     name: "aoverview", version: "0.1.0", basePath: "/mcp",
     description: "Report and browse macro goals, activity blocks, factual steps and delegations in a local dashboard.",
-    instructions: "Keep three levels distinct: macro goals, bounded activity blocks, and performed steps with action, result and an observed reference. Several blocks can advance one goal; completing a block does not automatically complete its goal. Follow the session detailLevel: low groups related work, medium separates tasks, high separates meaningful subactivities; never one block per tool call or a fixed block count. Include meaningful steps before closing performed work. Batch only changes. Preserve handle and revision. Register subagents before spawning; pass their handle, inherited detailLevel and AOVerview skill. Proposals are tentative. Resume after context loss or revision conflicts.",
+    instructions: "Set project at session opening to the free-text repository/product name you are working on, without looking up a project catalog. Case, accents, spaces, hyphens and underscores are ignored when grouping. The main agent can change it with a project operation; descendants inherit it. Keep three levels distinct: macro goals, bounded activity blocks, and performed steps with action, result and an observed reference. Several blocks can advance one goal; completing a block does not automatically complete its goal. Follow the session detailLevel: low groups related work, medium separates tasks, high separates meaningful subactivities; never one block per tool call or a fixed block count. Include meaningful steps before closing performed work. Batch only changes. Preserve handle and revision. Register subagents before spawning; pass their handle, inherited detailLevel and AOVerview skill. Proposals are tentative. Resume after context loss or revision conflicts.",
     logging: { enabled: false },
     allowedOrigins: [],
     skills: false,
   });
   server.tool({
-    name: "overview_open", description: "Open a session with macro goals and optional detailLevel low/medium/high (default medium). This guides agent reporting, not a canvas filter. Use a globally unique requestId; reuse it only for an exact retry.",
+    name: "overview_open", description: "Open a session with macro goals, a free-text project name (no catalog lookup), and optional detailLevel low/medium/high (default medium). Project grouping ignores case, accents, spaces, hyphens and underscores. Use a globally unique requestId; reuse it only for an exact retry.",
     inputSchema: openSchema,
   }, async input => respond(() => store.open(input)));
   server.tool({
-    name: "overview_update", description: "Atomically report only changed goals, blocks, details, delegation integration or agent completion. One active block per agent. Short IDs are scoped to your agent. Omitted fields are preserved; null clears optional text.",
+    name: "overview_update", description: "Atomically report only changed goals, blocks, details, delegation integration or agent completion. The main agent can set the session project with {op: project, name: free-text name} or clear it with name: null. One active block per agent. Short IDs are scoped to your agent. Omitted fields are preserved; null clears optional text.",
     inputSchema: updateSchema,
   }, async input => respond(() => store.update(input)));
   server.tool({

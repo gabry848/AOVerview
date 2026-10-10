@@ -18,11 +18,11 @@ For a Markdown library, macro goals could be “Deliver a complete Markdown libr
 ## Start, choose detail, resume
 
 - With a parent-supplied handle, use that identity. **Subagents never call `overview_open`.** Resume if the inherited level or revision is missing.
-- Otherwise call `overview_open` once with title, agent name, globally unique `requestId`, broad goals and optional `detailLevel`. Follow the user's choice: basso/low → `low`, medio/medium → `medium`, alto/high → `high`. If unspecified, use **medium** without asking. This is reporting granularity for the session, not a visual filter.
-- Save `handle`, `agentId`, `sessionId`, `revision` and `detailLevel` in working context and handoff/compaction summaries. Preserve child identities. Never replace a lost identity by opening another session.
+- Otherwise call `overview_open` once with title, agent name, the free-text `project` you are working on (for example `AOVerview`), globally unique `requestId`, broad goals and optional `detailLevel`. Use the known repository/product name directly; no project list or prior registration is needed. If the project is unknown, omit it. Grouping ignores case, accents, spaces, hyphens and underscores. Follow the user's choice: basso/low → `low`, medio/medium → `medium`, alto/high → `high`. If unspecified, use **medium** without asking. This is reporting granularity for the session, not a visual filter.
+- Save `handle`, `agentId`, `sessionId`, `revision`, `project` and `detailLevel` in working context and handoff/compaction summaries. Preserve child identities. Never replace a lost identity by opening another session.
 - After context loss, restart or `REVISION_CONFLICT`, call `overview_resume` with your saved handle. Its level is authoritative; continue from the returned revision and short IDs. An old saved opening receipt may lack the level: resume to recover it.
 - Resume returns the active block's last three details, up to five blocked/proposed blocks and twenty children, unfinished delegations first. Preserve older child identities; if unfinished-work checks fail, resolve visible work and resume again.
-- Only the main agent manages goals. All descendants inherit the same session level and report their own blocks under the delegated goal.
+- Only the main agent manages goals and the session project. To assign or change the project later, include `{ "op": "project", "name": "AOVerview" }` in `overview_update`; `name: null` clears it. All descendants inherit the same project and session level and report their own blocks under the delegated goal.
 
 | detailLevel | When to open a new block | Same library work might be grouped as |
 | --- | --- | --- |

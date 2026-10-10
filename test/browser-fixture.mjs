@@ -17,19 +17,19 @@ function child(writer, name, mandate, blockId) {
   writer.revision = result.revision; return result.child;
 }
 try {
-  const secondary = store.open({ requestId: randomUUID(), title: "Riorganizzare il catalogo delle skill", agentName: "Pi", goals: [{ id: "g1", title: "Rendere le skill più facili da trovare" }] });
+  const secondary = store.open({ requestId: randomUUID(), title: "Riorganizzare il catalogo delle skill", agentName: "Pi", project: "SkillGesture", goals: [{ id: "g1", title: "Rendere le skill più facili da trovare" }] });
   report(secondary, [
     { op: "goal", id: "g1", status: "blocked" },
     { op: "block", id: "b1", title: "Chiarire i criteri di classificazione", status: "active", goalId: "g1" },
     { op: "block", id: "b1", status: "blocked", concern: "Manca una decisione sui gruppi da mantenere nel catalogo." },
   ]);
-  const completed = store.open({ requestId: randomUUID(), title: "Verificare lo storage locale", agentName: "Codex", goals: [{ id: "g1", title: "Conservare i progressi dopo un riavvio" }] });
+  const completed = store.open({ requestId: randomUUID(), title: "Verificare lo storage locale", agentName: "Codex", project: "AOVerview", goals: [{ id: "g1", title: "Conservare i progressi dopo un riavvio" }] });
   report(completed, [
     { op: "block", id: "b1", title: "Verificare persistenza e ripresa", status: "active", goalId: "g1" },
     { op: "block", id: "b1", status: "completed", outcome: "I progressi sono disponibili anche dopo la riapertura del database." },
     { op: "goal", id: "g1", status: "completed" }, { op: "finish", status: "completed" },
   ]);
-  const root = store.open({ requestId: randomUUID(), title: "Implementare la dashboard degli agent", agentName: "Codex", goals: [
+  const root = store.open({ requestId: randomUUID(), title: "Implementare la dashboard degli agent", agentName: "Codex", project: "ao-verview", goals: [
     { id: "g1", title: "Definire il modello del lavoro", description: "Separare obiettivi, attività e intenzioni future." },
     { id: "g2", title: "Collegare i servizi", description: "Rendere i progressi disponibili in tempo reale." },
     { id: "g3", title: "Verificare l’esperienza utente", description: "Controllare chiarezza, ripresa e uso su mobile." },
@@ -59,6 +59,8 @@ try {
   const ui = child(root, "Verifica interfaccia", "Controllare la leggibilità della timeline e dei contributi delegati.", "b2");
   report(ui, [{ op: "block", id: "b1", title: "Controllare timeline e dettagli", status: "active", details: [{ id: "d1", action: "Controllata la distinzione tra attività e proposte", result: "Le intenzioni future sono indicate come da confermare." }] }]);
   child(ui, "Accessibilità", "Verificare navigazione da tastiera e leggibilità degli stati.", "b1");
+  const unassigned = store.open({ requestId: randomUUID(), title: "Controllare una sessione precedente", agentName: "Pi" });
+  report(unassigned, [{ op: "finish", status: "completed" }]);
   writeFileSync(`${path}.identity.json`, JSON.stringify(root));
-  console.log("Isolated browser fixture ready: three sessions and nested subagents.");
+  console.log("Isolated browser fixture ready: four sessions, two projects and nested subagents.");
 } finally { store.close(); }

@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/sidebar";
 import { AgentAvatar, statusLabels } from "./overview-ui";
 import { cn } from "@/lib/utils";
+import { groupSessionsByProject } from "../projects.js";
 
 export interface NavigationProps {
   sessions: SessionSummary[];
@@ -37,11 +38,11 @@ export function Navigation({ sessions, sessionId, overview, agentId, navigate, h
           </SidebarMenuButton>
         </SidebarMenuItem></SidebarMenu></SidebarGroupContent>
       </SidebarGroup>
-      <SidebarGroup>
-        <SidebarGroupLabel>Sessioni</SidebarGroupLabel>
+      {groupSessionsByProject(sessions).map(group => <SidebarGroup key={group.key === null ? "unassigned" : `project:${group.key}`}>
+        <SidebarGroupLabel title={group.name}><span className="truncate">{group.name}</span></SidebarGroupLabel>
         <SidebarGroupContent>
-          <SidebarMenu aria-label="Seleziona una sessione">
-            {sessions.map(session => <SidebarMenuItem key={session.id}>
+          <SidebarMenu aria-label={`Sessioni: ${group.name}`}>
+            {group.sessions.map(session => <SidebarMenuItem key={session.id}>
               <SidebarMenuButton tooltip={session.title} isActive={session.id === sessionId}
                 aria-current={session.id === sessionId ? "page" : undefined} onClick={() => choose(session.id)}>
                 <CircleDot className={cn(session.status === "running" ? "text-emerald-400" : session.status === "failed" ? "text-red-400" : "text-muted-foreground")} aria-hidden="true"/>
@@ -54,11 +55,16 @@ export function Navigation({ sessions, sessionId, overview, agentId, navigate, h
               </SidebarMenuAction>
             </SidebarMenuItem>)}
           </SidebarMenu>
-          {sessions.length === 0 && !loading && <p className="px-2 py-2 text-xs leading-5 text-muted-foreground group-data-[collapsible=icon]:hidden">Le prime sessioni compariranno qui.</p>}
-          {hasMore && <Button variant="ghost" size="sm" className="mt-2 text-muted-foreground group-data-[collapsible=icon]:hidden"
-            disabled={loading} onClick={loadMore}>Altre sessioni</Button>}
         </SidebarGroupContent>
-      </SidebarGroup>
+      </SidebarGroup>)}
+      {sessions.length === 0 && !loading && <SidebarGroup>
+        <SidebarGroupLabel>Sessioni</SidebarGroupLabel>
+        <p className="px-2 py-2 text-xs leading-5 text-muted-foreground group-data-[collapsible=icon]:hidden">Le prime sessioni compariranno qui.</p>
+      </SidebarGroup>}
+      {hasMore && <SidebarGroup><SidebarGroupContent>
+        <Button variant="ghost" size="sm" className="text-muted-foreground group-data-[collapsible=icon]:hidden"
+          disabled={loading} onClick={loadMore}>Altre sessioni</Button>
+      </SidebarGroupContent></SidebarGroup>}
       {overview && <SidebarGroup>
         <SidebarGroupLabel><GitBranch className="mr-2 size-3.5" aria-hidden="true"/>Agent della sessione</SidebarGroupLabel>
         <SidebarGroupContent><AgentTree agents={overview.agents} parentId={null} selectedId={agentId ?? ""}
