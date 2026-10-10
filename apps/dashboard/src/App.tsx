@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Sidebar, SidebarHeader, SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { groupSessionsByProject } from "./projects.js";
 
 const ActivityCanvas = lazy(() => import("./components/activity").then(module => ({ default: module.ActivityCanvas })));
 
@@ -62,6 +63,7 @@ export function App() {
   }
 
   const list = sessions.data?.items ?? [];
+  const projects = groupSessionsByProject(list);
   const overview = selected.data;
   const agent = overview?.agents.find(item => item.id === selection.agentId)
     ?? overview?.agents.find(item => item.id === overview.session.rootAgentId);
@@ -108,14 +110,16 @@ export function App() {
             </Button>
           </div>}
           {sessions.data && <SessionMetrics sessions={list} partial={Boolean(sessions.data.nextCursor)}/>}
-          <div className="flex items-center justify-between gap-3 pt-1"><h2 className="text-sm font-semibold">Sessioni</h2>
-            <span className="text-xs text-muted-foreground">{list.length}</span></div>
           {sessions.loading && !sessions.data && <LoadingCards count={3} label="Caricamento delle sessioni…"/>}
           {!sessions.loading && !sessions.error && list.length === 0 && <EmptyWorkspace/>}
-          <div className="grid items-stretch gap-3 xl:grid-cols-2 2xl:grid-cols-3">
-            {list.map(session => <SessionCard key={session.id} session={session} now={now} open={() => navigate(session.id)}
-              archive={() => void changeArchive(session)} archiveDisabled={busySessionId !== null} archiving={busySessionId === session.id}/>)}
-          </div>
+          {projects.map(group => <section key={group.key === null ? "unassigned" : `project:${group.key}`} aria-label={`Sessioni: ${group.name}`} className="space-y-3">
+            <div className="flex items-center justify-between gap-3 pt-1"><h2 className="min-w-0 wrap-anywhere text-sm font-semibold">{group.name}</h2>
+              <span className="shrink-0 text-xs text-muted-foreground">{group.sessions.length} {group.sessions.length === 1 ? "sessione" : "sessioni"}</span></div>
+            <div className="grid items-stretch gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+              {group.sessions.map(session => <SessionCard key={session.id} session={session} now={now} open={() => navigate(session.id)}
+                archive={() => void changeArchive(session)} archiveDisabled={busySessionId !== null} archiving={busySessionId === session.id}/>)}
+            </div>
+          </section>)}
           {sessions.data?.nextCursor && <div className="flex justify-center"><Button variant="outline" disabled={sessions.loading}
             onClick={() => setSessionPages(old => old + 1)}>{sessions.loading ? "Caricamento…" : "Mostra altre sessioni"}</Button></div>}
         </> : <>
@@ -129,7 +133,9 @@ export function App() {
             <header className="absolute top-3 left-3 z-20 max-w-[calc(100%-4.5rem)] rounded-xl border bg-background/95 px-3 py-3 shadow-lg backdrop-blur sm:top-5 sm:left-5 sm:px-4 md:max-w-[calc(100%-20rem)]">
               <div className="flex items-start gap-2">
                 <SidebarTrigger aria-label="Apri navigazione" className="-ml-1 size-8 shrink-0 md:hidden"/>
-                <div className="min-w-0"><h1 className="wrap-anywhere text-sm leading-5 font-semibold tracking-tight sm:text-base">{overview.session.title}</h1>
+                <div className="min-w-0">
+                  {overview.session.project && <p className="mb-1 wrap-anywhere text-xs text-muted-foreground">{overview.session.project}</p>}
+                  <h1 className="wrap-anywhere text-sm leading-5 font-semibold tracking-tight sm:text-base">{overview.session.title}</h1>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><AgentAvatar name={agent.name} small/>
                     <span className="min-w-0 wrap-anywhere">{agent.name}</span><StatusBadge status={agent.status}/>
                     {!live.connected && <span role="status" className="text-amber-400">Riconnessione…</span>}

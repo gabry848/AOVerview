@@ -4,6 +4,8 @@ Dashboard locale del lavoro degli agent, alimentata tramite MCP. Mostra obiettiv
 
 Ogni agent principale avvia una sessione indipendente. La dashboard mostra più sessioni insieme e permette di esplorare i subagent di ciascuna. Lo stato è dichiarato dagli agent: il silenzio non viene interpretato come completamento o fallimento.
 
+L'agent indica direttamente il nome del progetto, per esempio `project: "AOVerview"`, senza registrarlo o scegliere da un catalogo. Home e sidebar raggruppano le sessioni sotto il nome del progetto; quelle senza nome compaiono sotto **Senza progetto**.
+
 ## Avvio
 
 Richiede **Node.js 24+** e npm.
@@ -59,7 +61,7 @@ Fornisci all'agent la [skill AOVerview](skills/aoverview/SKILL.md). Il file è d
 
 | Tool | Utilizzo |
 | --- | --- |
-| `overview_open` | Apre una sessione con titolo, nome dell'agent e pochi obiettivi. Il `requestId` di apertura deve essere globalmente unico. |
+| `overview_open` | Apre una sessione con titolo, nome dell'agent, progetto libero opzionale e pochi obiettivi. Il `requestId` di apertura deve essere globalmente unico. |
 | `overview_update` | Comunica solo le modifiche significative, raggruppando operazioni correlate. |
 | `overview_register_subagent` | Riserva l'identità di un figlio prima dello spawn. |
 | `overview_resume` | Recupera contesto compatto e revisione dopo perdita del contesto o conflitti. |
@@ -81,6 +83,7 @@ Esempio di apertura:
   "requestId": "my-native-session-unique-id",
   "title": "Implementare la dashboard",
   "agentName": "Codex",
+  "project": "AOVerview",
   "detailLevel": "medium",
   "goals": [{ "id": "g1", "title": "Visualizzare progressi e risultati" }]
 }
@@ -107,6 +110,7 @@ Esempio di aggiornamento dopo l'apertura con revisione 0:
 
 ## Regole del reporting
 
+- `overview_open.project` è un nome libero, massimo 100 caratteri. Maiuscole, accenti, spazi, trattini e underscore non distinguono i progetti: `AOVerview`, `aoverview` e `AO-verview` appartengono allo stesso gruppo, con il primo nome già usato come etichetta. La punteggiatura significativa è conservata (`C` e `C++` restano distinti); nomi diversi e refusi arbitrari non vengono uniti automaticamente. I subagent ereditano il progetto. L'agent principale può assegnarlo o cambiarlo con `{ "op": "project", "name": "AOVerview" }` in `overview_update`, oppure rimuoverlo con `name: null`. La ripresa e le letture espongono il progetto salvato.
 - La to-do list contiene pochi obiettivi ampi: più blocchi possono contribuire allo stesso obiettivo. I blocchi descrivono attività circoscritte; i passaggi interni contengono azione, esito e un riferimento verificabile, quando disponibile. Un blocco concluso non completa automaticamente il suo obiettivo.
 - `overview_open.detailLevel` è opzionale: `low` raggruppa lavori correlati, `medium` separa attività con un risultato proprio, `high` distingue anche sottoattività e verifiche significative. Predefinito: `medium`. Non impone un numero di blocchi né cambia gli obiettivi; la skill guida l'agent e i subagent ereditano il livello. Il livello è salvato nella sessione, restituito alla ripresa ed esposto dall'API.
 - Puoi indicarlo nel prompt, per esempio: «Usa AOVerview con dettaglio basso/medio/alto». È una scelta all'apertura della run; non riclassifica i blocchi delle sessioni precedenti. Per una prova: «Usa AOVerview con dettaglio medio. Mantieni gli obiettivi macro; descrivi il lavoro in blocchi e i passaggi come azione, esito e riferimento, seguendo la skill».
@@ -170,7 +174,7 @@ npm run dev -w @aoverview/dashboard
 
 Esegui gli ultimi tre comandi in terminali distinti. Per i servizi compilati usa `start`, dopo `npm run build`.
 
-SQLite usa WAL, foreign key e timeout dei lock. MCP scrive il reporting; l’API può modificare solo lo stato di archiviazione tramite i suoi endpoint. Le migrazioni sono versionate e idempotenti. La migrazione alla versione 2 mantiene sessioni e ricevute esistenti, assegna `medium` alle sessioni precedenti e lascia i riferimenti non riportati a `null`. La versione 3 aggiunge `archivedAt`, inizialmente `null`, senza cambiare la cronologia o le revisioni degli agent.
+SQLite usa WAL, foreign key e timeout dei lock. MCP scrive il reporting; l’API può modificare solo lo stato di archiviazione tramite i suoi endpoint. Le migrazioni sono versionate e idempotenti. La migrazione alla versione 2 mantiene sessioni e ricevute esistenti, assegna `medium` alle sessioni precedenti e lascia i riferimenti non riportati a `null`. La versione 3 aggiunge `archivedAt`, inizialmente `null`, senza cambiare la cronologia o le revisioni degli agent. La versione 4 aggiunge `project` e la chiave normalizzata `projectKey`, inizialmente `null`, mantenendo sessioni, archivi e ricevute.
 
 ## Verifica
 

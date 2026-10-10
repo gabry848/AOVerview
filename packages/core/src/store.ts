@@ -9,6 +9,7 @@ import {
 } from "./contracts.js";
 import { connectDatabase, schemaVersion } from "./database.js";
 import { OverviewError, requireCondition } from "./errors.js";
+import { projectKey } from "./project.js";
 
 type AgentRecord = Agent & { handle: string };
 const terminalBlocks = new Set<BlockStatus>(["completed", "failed", "cancelled"]);
@@ -108,6 +109,14 @@ export class OverviewStore {
     return this.one<{ position: number }>(`SELECT COALESCE(MAX(position), -1)+1 AS position FROM ${table} WHERE ${where}`, ...params)!.position;
   }
 
+  private resolveProject(name: string | null): Pick<Session, "project" | "projectKey"> {
+    if (name === null) return { project: null, projectKey: null };
+    const key = projectKey(name);
+    const existing = this.one<{ project: string }>(
+      "SELECT project FROM sessions WHERE projectKey=? ORDER BY createdAt,id LIMIT 1", key);
+    return { project: existing?.project ?? name, projectKey: key };
+  }
+
   open(input: unknown): OpenResult {
     const data = openSchema.parse(input);
     return this.write("open", data.requestId, data, () => {
@@ -116,8 +125,9 @@ export class OverviewStore {
       const agentId = `a_${randomUUID()}`;
       const handle = `w_${randomBytes(24).toString("base64url")}`;
       const detailLevel = data.detailLevel ?? "medium";
-      this.run("INSERT INTO sessions(id,title,rootAgentId,detailLevel,createdAt,updatedAt) VALUES(?,?,?,?,?,?)",
-        sessionId, data.title, agentId, detailLevel, now, now);
+      const { project, projectKey } = this.resolveProject(data.project ?? null);
+      this.run("INSERT INTO sessions(id,title,rootAgentId,detailLevel,project,projectKey,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,?)",
+        sessionId, data.title, agentId, detailLevel, project, projectKey, now, now);
       this.run(`INSERT INTO agents(id,sessionId,handle,name,status,createdAt,updatedAt)
         VALUES(?,?,?,?,'running',?,?)`, agentId, sessionId, handle, data.agentName, now, now);
       const ids = new Set<string>();
@@ -128,7 +138,7 @@ export class OverviewStore {
           VALUES(?,?,?,?,'pending',?,?,?)`, sessionId, goal.id, goal.title, goal.description ?? null, position, now, now);
       }
       this.run("INSERT INTO changes(sessionId,agentId) VALUES(?,?)", sessionId, agentId);
-      return { sessionId, agentId, handle, revision: 0, detailLevel };
+      return { sessionId, agentId, handle, revision: 0, detailLevel, project };
     });
   }
 
@@ -153,7 +163,11 @@ export class OverviewStore {
   }
 
   private apply(agent: Agent, op: Exclude<Mutation, { op: "finish" }>, now: number): void {
-    if (op.op === "goal") {
+    if (op.op === "project") {
+      requireCondition(agent.parentAgentId === null, "FORBIDDEN", "Only the main agent can update the session project.", 403);
+      const { project, projectKey } = this.resolveProject(op.name);
+      this.run("UPDATE sessions SET project=?, projectKey=? WHERE id=?", project, projectKey, agent.sessionId);
+    } else if (op.op === "goal") {
       requireCondition(agent.parentAgentId === null, "FORBIDDEN", "Only the main agent can update session goals.", 403);
       const previous = this.one<Goal>("SELECT * FROM goals WHERE sessionId=? AND id=?", agent.sessionId, op.id);
       requireCondition(previous || op.title, "TITLE_REQUIRED", "New goals need a title.");
@@ -257,8 +271,8 @@ export class OverviewStore {
       const handle = `w_${randomBytes(24).toString("base64url")}`;
       this.run(`INSERT INTO agents(id,sessionId,parentAgentId,parentBlockId,goalId,handle,name,mandate,status,createdAt,updatedAt)
         VALUES(?,?,?,?,?,?,?,?,'reserved',?,?)`, childId, parent.sessionId, parent.id, block.id, goalId, handle, data.name, data.mandate, now, now);
-      const detailLevel = this.one<Session>("SELECT * FROM sessions WHERE id=?", parent.sessionId)!.detailLevel;
-      return { ...this.touch(parent, now), child: { agentId: childId, sessionId: parent.sessionId, handle, revision: 0, detailLevel } };
+      const { detailLevel, project } = this.one<Session>("SELECT * FROM sessions WHERE id=?", parent.sessionId)!;
+      return { ...this.touch(parent, now), child: { agentId: childId, sessionId: parent.sessionId, handle, revision: 0, detailLevel, project } };
     });
   }
 
@@ -337,12 +351,13 @@ export class OverviewStore {
     const { handle } = resumeSchema.parse(input);
     return this.transaction(false, () => {
       const agent = this.authenticate(handle);
+      const session = this.one<Session>("SELECT * FROM sessions WHERE id=?", agent.sessionId)!;
       const activeBlock = this.one<Block>(`${blockSelection} WHERE b.agentId=? AND b.status='active'`, agent.id);
       const active = activeBlock ? { ...context(activeBlock), details: this.all<Pick<Detail, "id" | "action" | "result" | "reference">>(`SELECT id,action,result,reference FROM details
         WHERE agentId=? AND blockId=? ORDER BY position DESC LIMIT 3`, agent.id, activeBlock.id).reverse() } : null;
       return {
         agentId: agent.id, sessionId: agent.sessionId, revision: agent.revision,
-        detailLevel: this.one<Session>("SELECT * FROM sessions WHERE id=?", agent.sessionId)!.detailLevel,
+        detailLevel: session.detailLevel, project: session.project,
         status: agent.status, mandate: agent.mandate, parentAgentId: agent.parentAgentId, goalId: agent.goalId,
         goals: this.all<Pick<Goal, "id" | "title" | "status">>("SELECT id,title,status FROM goals WHERE sessionId=? ORDER BY position", agent.sessionId),
         active,
