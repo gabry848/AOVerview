@@ -22,7 +22,7 @@ Apri **http://localhost:3000**. Il comando compila il core, esegue le migrazioni
 | API dashboard | `http://localhost:3002/api/v1` |
 | Disponibilità API | `http://localhost:3002/health` |
 
-Il precedente `hello-world` è sostituito dai quattro tool di reporting. L'endpoint MCP passa dalla porta 3000 alla **3001**.
+Il precedente `hello-world` è sostituito dai tool di reporting e consultazione. L'endpoint MCP passa dalla porta 3000 alla **3001**.
 
 Per la versione compilata:
 
@@ -63,10 +63,16 @@ Fornisci all'agent la [skill AOVerview](skills/aoverview/SKILL.md). Il file è d
 | `overview_update` | Comunica solo le modifiche significative, raggruppando operazioni correlate. |
 | `overview_register_subagent` | Riserva l'identità di un figlio prima dello spawn. |
 | `overview_resume` | Recupera contesto compatto e revisione dopo perdita del contesto o conflitti. |
+| `overview_list_sessions` | Elenca le sessioni non archiviate con attività corrente e conteggi di avanzamento. |
+| `overview_get_session` | Legge obiettivi e gerarchia degli agent tramite `sessionId`, anche per sessioni archiviate. |
+| `overview_list_blocks` | Elenca le attività di un `agentId`, con paginazione e filtro `view`. |
+| `overview_get_block` | Legge un'attività tramite `agentId` e `blockId`, con tutti i passaggi azione/esito/riferimento. |
 
 Conserva handle e revisione restituiti anche nei riepiloghi di compattazione/ripresa. Le risposte di scrittura non ripetono i testi inviati; il risultato è in `structuredContent`. Gli errori sono risposte MCP `isError` con codice e indicazione breve.
 
-La ripresa restituisce gli ultimi tre dettagli del blocco attivo, fino a cinque blocchi bloccati/proposti e venti figli, dando priorità alle deleghe ancora aperte. La dashboard e l'API conservano la cronologia completa.
+La ripresa restituisce gli ultimi tre dettagli del blocco attivo, fino a cinque blocchi bloccati/proposti e venti figli, dando priorità alle deleghe ancora aperte. Per consultare la cronologia completa via MCP, usa `overview_list_sessions` → `overview_get_session` → `overview_list_blocks` → `overview_get_block`. Le letture non richiedono handle, non li restituiscono e non modificano stato o revisioni.
+
+Le liste MCP accettano `limit` (1–100, predefinito 30) e `cursor` (stringa `nextCursor` della pagina precedente; `null` indica la fine). `overview_list_blocks.view` accetta `all` (predefinito), `history` (lavoro avviato, dal più recente) o `proposed` (proposte). Gli ID dei blocchi sono locali all'agent: per leggere il dettaglio occorrono entrambi gli ID.
 
 Esempio di apertura:
 

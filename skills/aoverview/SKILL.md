@@ -34,6 +34,8 @@ These are grouping examples, **not required titles or block counts**. Never crea
 
 ## Report only meaningful changes
 
+For read-only browsing, use `overview_list_sessions` → `overview_get_session` with `sessionId` → `overview_list_blocks` with `agentId` → `overview_get_block` with both `agentId` and `blockId`. Session reads include goals and the agent hierarchy; block reads include every action/result/reference step. These tools need no writer handle and never return one. Lists accept `limit` (1–100, default 30) and the previous page's `nextCursor` as `cursor`; stop when it is null. Block lists accept `view: "all" | "history" | "proposed"`. Archived sessions are hidden from the list but remain readable by ID. Keep `overview_resume` for recovering your writer context and revision.
+
 Use `overview_update` when starting an activity, obtaining a useful result, discovering a blocker, changing direction, delegating or finishing. Start a block when work begins; add factual details as results become available. Every nontrivial performed block needs meaningful action/result/reference steps by closure, including work that failed. A proposal cancelled before work starts needs no performed details.
 
 Do not report every tool call, heartbeat or repeated summary. Group related steps, send only new or corrected fields, and reuse detail IDs when filling in a result or reference. Do not repeat the goal list or copy the same result into summary, detail and outcome; the outcome briefly states what the whole activity achieved. Low detail still includes useful performed steps.
